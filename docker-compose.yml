@@ -10,13 +10,13 @@ services:
       # Persistir modelos descargados
       - ollama_data:/root/.ollama
     # Para GPU NVIDIA (opcional, descomentar si tienes GPU)
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    #deploy:
+    #  resources:
+    #    reservations:
+    #      devices:
+    #        - driver: nvidia
+    #          count: all
+    #          capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
@@ -24,7 +24,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Servicio LangChain App
+  # Servicio LangChain App (Backend FastAPI)
   langchain-app:
     build:
       context: .
@@ -34,6 +34,9 @@ services:
       - "8000:8000"
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      - MODEL_NAME=llama3.2
+      - PORT=8000
+      - MAX_INPUT_LENGTH=10000
       - PYTHONUNBUFFERED=1
     command: python api_server.py
     volumes:
@@ -43,6 +46,29 @@ services:
       ollama:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio Web Frontend (React + Vite + Nginx)
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chatgpt-web
+    ports:
+      - "3000:80"
+    depends_on:
+      langchain-app:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   ollama_data:

@@ -1,25 +1,28 @@
 """
 API REST con FastAPI para LangChain + Ollama
-Expone endpoints para chat y RAG
+Expone endpoints para chat con soporte de streaming SSE
 """
 import os
+import asyncio
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 
 # Configuracion
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 MODEL_NAME = os.getenv("MODEL_NAME", "llama3.2")
+PORT = int(os.getenv("PORT", "8000"))
+MAX_INPUT_LENGTH = int(os.getenv("MAX_INPUT_LENGTH", "10000"))
 
 app = FastAPI(
-    title="LangChain + Ollama API",
-    description="API local para interactuar con LLMs sin costes",
+    title="ChatGPT Local - Ollama API",
+    description="API local estilo ChatGPT usando Ollama",
     version="1.0.0"
 )
 
@@ -37,16 +40,16 @@ app.add_middleware(
 # Modelos Pydantic
 # =============================================================================
 class ChatMessage(BaseModel):
-    role: str  # "user" o "assistant"
-    content: str
+    role: str = Field(..., description="Role: user, assistant, or system")
+    content: str = Field(..., description="Message content")
 
 
 class ChatRequest(BaseModel):
-    message: str
-    history: Optional[List[ChatMessage]] = []
-    system_prompt: Optional[str] = "Eres un asistente util."
-    temperature: Optional[float] = 0.7
-    model: Optional[str] = MODEL_NAME
+    messages: List[ChatMessage] = Field(..., description="Conversation messages")
+    model: str = Field(default=MODEL_NAME, description="Model name")
+    temperature: Optional[float] = Field(default=0.7, ge=0.0, le=2.0, description="Temperature")
+    max_tokens: Optional[int] = Field(default=2048, ge=1, le=4096, description="Max tokens")
+    system_prompt: Optional[str] = Field(default="Eres un asistente útil.", description="System prompt")
 
 
 class ChatResponse(BaseModel):
@@ -88,21 +91,38 @@ async def list_models():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Endpoint de chat simple."""
+    """Endpoint de chat simple sin streaming."""
+    # Validar longitud de mensajes
+    for msg in request.messages:
+        if len(msg.content) > MAX_INPUT_LENGTH:
+            raise HTTPException(status_code=400, detail="Message too long")
+
     try:
         llm = ChatOllama(
             model=request.model,
             base_url=OLLAMA_BASE_URL,
             temperature=request.temperature,
+            num_predict=request.max_tokens,
         )
 
-        # Construir historial
-        messages = [("system", request.system_prompt)]
-        for msg in request.history:
-            messages.append((msg.role, msg.content))
-        messages.append(("human", request.message))
+        # Construir mensajes en formato LangChain
+        langchain_messages = []
 
-        prompt = ChatPromptTemplate.from_messages(messages)
+        # Agregar system prompt si existe y no está en los mensajes
+        has_system = any(msg.role == "system" for msg in request.messages)
+        if not has_system and request.system_prompt:
+            langchain_messages.append(("system", request.system_prompt))
+
+        # Agregar resto de mensajes
+        for msg in request.messages:
+            if msg.role == "user":
+                langchain_messages.append(("human", msg.content))
+            elif msg.role == "assistant":
+                langchain_messages.append(("assistant", msg.content))
+            elif msg.role == "system":
+                langchain_messages.append(("system", msg.content))
+
+        prompt = ChatPromptTemplate.from_messages(langchain_messages)
         chain = prompt | llm | StrOutputParser()
 
         response = chain.invoke({})
@@ -115,25 +135,44 @@ async def chat(request: ChatRequest):
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
-    """Endpoint de chat con streaming."""
+    """Endpoint de chat con streaming via texto plano."""
+    # Validar longitud de mensajes
+    for msg in request.messages:
+        if len(msg.content) > MAX_INPUT_LENGTH:
+            raise HTTPException(status_code=400, detail="Message too long")
+
     async def generate():
         try:
             llm = ChatOllama(
                 model=request.model,
                 base_url=OLLAMA_BASE_URL,
                 temperature=request.temperature,
+                num_predict=request.max_tokens,
             )
 
-            messages = [("system", request.system_prompt)]
-            for msg in request.history:
-                messages.append((msg.role, msg.content))
-            messages.append(("human", request.message))
+            # Construir mensajes
+            langchain_messages = []
 
-            prompt = ChatPromptTemplate.from_messages(messages)
+            has_system = any(msg.role == "system" for msg in request.messages)
+            if not has_system and request.system_prompt:
+                langchain_messages.append(("system", request.system_prompt))
+
+            for msg in request.messages:
+                if msg.role == "user":
+                    langchain_messages.append(("human", msg.content))
+                elif msg.role == "assistant":
+                    langchain_messages.append(("assistant", msg.content))
+                elif msg.role == "system":
+                    langchain_messages.append(("system", msg.content))
+
+            prompt = ChatPromptTemplate.from_messages(langchain_messages)
             chain = prompt | llm
 
+            # Stream de chunks
             for chunk in chain.stream({}):
-                yield chunk.content
+                if hasattr(chunk, 'content'):
+                    yield chunk.content
+                await asyncio.sleep(0)  # Permitir que otros procesos se ejecuten
 
         except Exception as e:
             yield f"Error: {e}"
@@ -189,7 +228,12 @@ Texto: {text}"""
 # =============================================================================
 if __name__ == "__main__":
     import uvicorn
-    print(f"Iniciando servidor API...")
+    print("=" * 60)
+    print("ChatGPT Local - Ollama API Server")
+    print("=" * 60)
     print(f"Ollama URL: {OLLAMA_BASE_URL}")
     print(f"Modelo por defecto: {MODEL_NAME}")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"Puerto: {PORT}")
+    print(f"Max input length: {MAX_INPUT_LENGTH} caracteres")
+    print("=" * 60)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
