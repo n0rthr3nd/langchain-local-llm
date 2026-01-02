@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # Servicio Ollama - LLM Local
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    ports:
+      - "11434:11434"
+    volumes:
+      # Persistir modelos descargados
+      - ollama_data:/root/.ollama
+    # Para GPU NVIDIA (opcional, descomentar si tienes GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio LangChain App
+  langchain-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: langchain-app
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Montar codigo fuente para desarrollo
+      - ./app:/app
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    driver: local
