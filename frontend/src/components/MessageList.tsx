@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Message } from '../types';
 import { MessageItem } from './MessageItem';
 
@@ -7,7 +7,7 @@ interface MessageListProps {
   isLoading?: boolean;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading }) => {
+export const MessageList = ({ messages, isLoading }: MessageListProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

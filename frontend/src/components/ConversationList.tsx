@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Conversation } from '../types';
 
 interface ConversationListProps {
@@ -9,13 +9,13 @@ interface ConversationListProps {
   onDeleteConversation: (id: string) => void;
 }
 
-export const ConversationList: React.FC<ConversationListProps> = ({
+export const ConversationList = ({
   conversations,
   currentConversationId,
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
-}) => {
+}: ConversationListProps) => {
   return (
     <div className="w-64 bg-gray-900 border-r border-gray-700 flex flex-col">
       <div className="p-4 border-b border-gray-700">

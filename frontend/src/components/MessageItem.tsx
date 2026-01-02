@@ -1,4 +1,3 @@
-import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -8,7 +7,7 @@ interface MessageItemProps {
   message: Message;
 }
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
+export const MessageItem = ({ message }: MessageItemProps) => {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
@@ -26,13 +25,15 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
               components={{
-                code({ node, inline, className, children, ...props }) {
-                  return inline ? (
-                    <code className="bg-gray-800 px-1 py-0.5 rounded text-sm" {...props}>
+                code(props) {
+                  const { children, className, ...rest } = props;
+                  const match = /language-(\w+)/.exec(className || '');
+                  return match ? (
+                    <code className={`${className} block bg-gray-800 p-4 rounded-lg overflow-x-auto`} {...rest}>
                       {children}
                     </code>
                   ) : (
-                    <code className={`${className} block bg-gray-800 p-4 rounded-lg overflow-x-auto`} {...props}>
+                    <code className="bg-gray-800 px-1 py-0.5 rounded text-sm" {...rest}>
                       {children}
                     </code>
                   );

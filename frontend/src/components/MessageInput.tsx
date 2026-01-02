@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface MessageInputProps {
   onSendMessage: (message: string) => void;
@@ -7,12 +7,12 @@ interface MessageInputProps {
   onStopGeneration: () => void;
 }
 
-export const MessageInput: React.FC<MessageInputProps> = ({
+export const MessageInput = ({
   onSendMessage,
   isLoading,
   isStreaming,
   onStopGeneration,
-}) => {
+}: MessageInputProps) => {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 

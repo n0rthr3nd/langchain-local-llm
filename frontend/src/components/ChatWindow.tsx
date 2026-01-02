@@ -1,4 +1,3 @@
-import React from 'react';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { ModelSelector } from './ModelSelector';
@@ -16,7 +15,7 @@ interface ChatWindowProps {
   onSettingsChange: (settings: ChatSettings) => void;
 }
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({
+export const ChatWindow = ({
   messages,
   isLoading,
   isStreaming,
@@ -26,7 +25,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onRegenerateLastMessage,
   onClearMessages,
   onSettingsChange,
-}) => {
+}: ChatWindowProps) => {
   return (
     <div className="flex flex-col h-screen bg-chat-bg">
       <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">

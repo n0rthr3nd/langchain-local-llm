@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ModelInfo, ChatSettings } from '../types';
 import { api } from '../utils/api';
 
@@ -7,7 +7,7 @@ interface ModelSelectorProps {
   onSettingsChange: (settings: ChatSettings) => void;
 }
 
-export const ModelSelector: React.FC<ModelSelectorProps> = ({ settings, onSettingsChange }) => {
+export const ModelSelector = ({ settings, onSettingsChange }: ModelSelectorProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [loading, setLoading] = useState(false);
