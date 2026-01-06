@@ -105,32 +105,37 @@ async def chat(request: ChatRequest):
             num_predict=request.max_tokens,
         )
 
-        # Construir mensajes en formato LangChain
+        # Construir mensajes en formato LangChain usando objetos Message directamente
+        # para evitar problemas con caracteres especiales en plantillas
+        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+
         langchain_messages = []
 
         # Agregar system prompt si existe y no está en los mensajes
         has_system = any(msg.role == "system" for msg in request.messages)
         if not has_system and request.system_prompt:
-            langchain_messages.append(("system", request.system_prompt))
+            langchain_messages.append(SystemMessage(content=request.system_prompt))
 
         # Agregar resto de mensajes
         for msg in request.messages:
             if msg.role == "user":
-                langchain_messages.append(("human", msg.content))
+                langchain_messages.append(HumanMessage(content=msg.content))
             elif msg.role == "assistant":
-                langchain_messages.append(("assistant", msg.content))
+                langchain_messages.append(AIMessage(content=msg.content))
             elif msg.role == "system":
-                langchain_messages.append(("system", msg.content))
+                langchain_messages.append(SystemMessage(content=msg.content))
 
-        prompt = ChatPromptTemplate.from_messages(langchain_messages)
-        chain = prompt | llm | StrOutputParser()
-
-        response = chain.invoke({})
+        # Invocar directamente sin usar plantillas que puedan malinterpretar caracteres especiales
+        chain = llm | StrOutputParser()
+        response = chain.invoke(langchain_messages)
 
         return ChatResponse(response=response, model=request.model)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"Error in chat endpoint: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
 
 @app.post("/chat/stream")
@@ -150,32 +155,35 @@ async def chat_stream(request: ChatRequest):
                 num_predict=request.max_tokens,
             )
 
-            # Construir mensajes
+            # Construir mensajes usando objetos Message directamente
+            # para evitar problemas con caracteres especiales en plantillas
+            from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+
             langchain_messages = []
 
             has_system = any(msg.role == "system" for msg in request.messages)
             if not has_system and request.system_prompt:
-                langchain_messages.append(("system", request.system_prompt))
+                langchain_messages.append(SystemMessage(content=request.system_prompt))
 
             for msg in request.messages:
                 if msg.role == "user":
-                    langchain_messages.append(("human", msg.content))
+                    langchain_messages.append(HumanMessage(content=msg.content))
                 elif msg.role == "assistant":
-                    langchain_messages.append(("assistant", msg.content))
+                    langchain_messages.append(AIMessage(content=msg.content))
                 elif msg.role == "system":
-                    langchain_messages.append(("system", msg.content))
+                    langchain_messages.append(SystemMessage(content=msg.content))
 
-            prompt = ChatPromptTemplate.from_messages(langchain_messages)
-            chain = prompt | llm
-
-            # Stream de chunks
-            for chunk in chain.stream({}):
+            # Stream de chunks directamente sin plantillas
+            for chunk in llm.stream(langchain_messages):
                 if hasattr(chunk, 'content'):
                     yield chunk.content
                 await asyncio.sleep(0)  # Permitir que otros procesos se ejecuten
 
         except Exception as e:
-            yield f"Error: {e}"
+            import traceback
+            print(f"Error in chat stream endpoint: {str(e)}")
+            print(traceback.format_exc())
+            yield f"\n\nError: {str(e)}"
 
     return StreamingResponse(generate(), media_type="text/plain")
 

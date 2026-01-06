@@ -25,8 +25,10 @@ export const MessageInput = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Solo verificamos que no esté vacío, pero enviamos el contenido original
+    // para preservar formato, espacios y caracteres especiales
     if (input.trim() && !isLoading) {
-      onSendMessage(input.trim());
+      onSendMessage(input);
       setInput('');
     }
   };

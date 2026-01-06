@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { Message } from '../types';
+import { CodeBlock } from './CodeBlock';
 
 interface MessageItemProps {
   message: Message;
@@ -27,15 +28,15 @@ export const MessageItem = ({ message }: MessageItemProps) => {
               components={{
                 code(props) {
                   const { children, className, ...rest } = props;
-                  const match = /language-(\w+)/.exec(className || '');
-                  return match ? (
-                    <code className={`${className} block bg-gray-800 p-4 rounded-lg overflow-x-auto`} {...rest}>
-                      {children}
-                    </code>
-                  ) : (
-                    <code className="bg-gray-800 px-1 py-0.5 rounded text-sm" {...rest}>
-                      {children}
-                    </code>
+                  const inline = !className;
+
+                  return (
+                    <CodeBlock
+                      className={className}
+                      inline={inline}
+                    >
+                      {String(children).replace(/\n$/, '')}
+                    </CodeBlock>
                   );
                 },
               }}
