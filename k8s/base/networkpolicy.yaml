@@ -1,0 +1,91 @@
+---
+# NetworkPolicy para Ollama
+# Solo permite tráfico desde la API de LangChain
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ollama-network-policy
+  namespace: llm-services
+  labels:
+    app.kubernetes.io/part-of: langchain-ollama
+spec:
+  podSelector:
+    matchLabels:
+      app: ollama
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Solo permitir tráfico desde langchain-api
+  - from:
+    - podSelector:
+        matchLabels:
+          app: langchain-api
+    ports:
+    - protocol: TCP
+      port: 11434
+  egress:
+  # Permitir tráfico saliente (necesario para descargar modelos)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS
+    - protocol: TCP
+      port: 80   # HTTP
+  # DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# NetworkPolicy para LangChain API
+# Permite tráfico entrante desde cualquier pod y saliente a Ollama
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: langchain-api-network-policy
+  namespace: llm-services
+  labels:
+    app.kubernetes.io/part-of: langchain-ollama
+spec:
+  podSelector:
+    matchLabels:
+      app: langchain-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Permitir tráfico desde cualquier origen (Ingress, otros servicios)
+  - from:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  # Permitir tráfico hacia Ollama
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ollama
+    ports:
+    - protocol: TCP
+      port: 11434
+  # DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Permitir HTTPS saliente (para actualizar librerías si es necesario)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443

@@ -8,6 +8,7 @@ Entorno completo para desarrollar con LangChain usando LLMs locales sin costes.
 - **Linux** (x86_64 y ARM64)
 - **macOS** (Intel y Apple Silicon)
 - **🥧 Raspberry Pi 5** (8GB RAM) - [Ver guía específica](RASPBERRY_PI_SETUP.md)
+- **☸️ Kubernetes (k3s)** - [Ver guía de despliegue](K8S_QUICKSTART.md) | [Documentación completa](K8S_DEPLOYMENT.md)
 
 ## Requisitos Previos
 
@@ -39,6 +40,40 @@ docker exec ollama-server ollama pull gemma2:2b
 ```
 
 📖 **Guía completa:** [RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md)
+
+---
+
+### ☸️ Para Kubernetes (k3s)
+
+**Despliegue en cluster k3s con auto-scaling y alta disponibilidad:**
+
+```bash
+# 1. Construir e importar imagen
+./k8s/scripts/build-and-push.sh
+
+# 2. Desplegar servicios
+./k8s/scripts/deploy.sh
+
+# 3. Descargar modelos
+kubectl apply -f k8s/base/model-download-job.yaml
+kubectl logs -n llm-services job/model-download -f
+
+# 4. Verificar
+kubectl get pods -n llm-services
+```
+
+📖 **Guías:**
+- [Quick Start (5 minutos)](K8S_QUICKSTART.md)
+- [Documentación completa](K8S_DEPLOYMENT.md)
+- [Ejemplos de integración](k8s/EXAMPLES.md)
+
+**Ventajas del despliegue en k3s:**
+- ✅ Alta disponibilidad (múltiples réplicas de la API)
+- ✅ Auto-scaling basado en CPU/memoria
+- ✅ Balanceo de carga automático
+- ✅ Integración nativa con otros servicios del cluster
+- ✅ Actualizaciones rolling sin downtime
+- ✅ NetworkPolicies para seguridad
 
 ---
 

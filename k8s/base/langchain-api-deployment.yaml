@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langchain-api
+  namespace: llm-services
+  labels:
+    app: langchain-api
+    app.kubernetes.io/name: langchain-api
+    app.kubernetes.io/part-of: langchain-ollama
+spec:
+  # 2-3 réplicas para alta disponibilidad y balanceo de carga
+  replicas: 2
+  selector:
+    matchLabels:
+      app: langchain-api
+
+  # Estrategia de actualización rolling
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Mantener al menos 1 réplica activa
+
+  template:
+    metadata:
+      labels:
+        app: langchain-api
+        app.kubernetes.io/name: langchain-api
+      annotations:
+        # Forzar restart si el ConfigMap cambia
+        checksum/config: "{{ include (print $.Template.BasePath \"/configmap.yaml\") . | sha256sum }}"
+    spec:
+      containers:
+      - name: langchain-api
+        image: langchain-app:latest
+        imagePullPolicy: IfNotPresent
+
+        # Comando para iniciar la API
+        command: ["python", "api_server.py"]
+
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+
+        env:
+        - name: OLLAMA_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: langchain-config
+              key: OLLAMA_BASE_URL
+        - name: MODEL_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: langchain-config
+              key: MODEL_NAME
+        - name: EMBEDDING_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: langchain-config
+              key: EMBEDDING_MODEL
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: langchain-config
+              key: PORT
+        - name: MAX_INPUT_LENGTH
+          valueFrom:
+            configMapKeyRef:
+              name: langchain-config
+              key: MAX_INPUT_LENGTH
+        - name: PYTHONUNBUFFERED
+          valueFrom:
+            configMapKeyRef:
+              name: langchain-config
+              key: PYTHONUNBUFFERED
+
+        resources:
+          limits:
+            memory: "512Mi"  # Límite por réplica
+            cpu: "500m"
+          requests:
+            memory: "256Mi"  # RAM mínima por réplica
+            cpu: "100m"
+
+        # Health checks - coinciden con los endpoints del api_server.py
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        startupProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 12  # 60 segundos total
+
+      # Política de reinicio
+      restartPolicy: Always
+
+      # Tiempo de gracia para procesar peticiones en curso
+      terminationGracePeriodSeconds: 30
+
+      # Anti-affinity para distribuir réplicas en diferentes nodos (si hay múltiples)
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - langchain-api
+              topologyKey: kubernetes.io/hostname

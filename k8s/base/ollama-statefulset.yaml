@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ollama
+  namespace: llm-services
+  labels:
+    app: ollama
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: langchain-ollama
+spec:
+  serviceName: ollama
+  replicas: 1  # Solo 1 réplica debido a limitaciones de RAM
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+        app.kubernetes.io/name: ollama
+    spec:
+      # Configuración para ARM64 (Raspberry Pi)
+      # Si tienes nodos diferentes, puedes usar nodeSelector
+      # nodeSelector:
+      #   kubernetes.io/arch: arm64
+
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: http
+          containerPort: 11434
+          protocol: TCP
+
+        env:
+        - name: OLLAMA_NUM_PARALLEL
+          valueFrom:
+            configMapKeyRef:
+              name: langchain-config
+              key: OLLAMA_NUM_PARALLEL
+        - name: OLLAMA_MAX_LOADED_MODELS
+          valueFrom:
+            configMapKeyRef:
+              name: langchain-config
+              key: OLLAMA_MAX_LOADED_MODELS
+
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama
+
+        resources:
+          limits:
+            memory: "5Gi"  # Límite máximo de RAM
+            cpu: "3000m"   # 3 cores máximo
+          requests:
+            memory: "3Gi"  # RAM mínima garantizada
+            cpu: "1000m"   # 1 core mínimo
+
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Dar tiempo para que el proceso se inicie
+        startupProbe:
+          httpGet:
+            path: /api/tags
+            port: 11434
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30  # 150 segundos total
+
+      # Volumen persistente para los modelos
+      volumes:
+      - name: ollama-data
+        persistentVolumeClaim:
+          claimName: ollama-models-pvc
+
+      # Política de reinicio
+      restartPolicy: Always
+
+      # Tiempo de gracia para shutdown
+      terminationGracePeriodSeconds: 30

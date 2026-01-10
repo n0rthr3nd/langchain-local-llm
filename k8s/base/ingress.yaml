@@ -1,0 +1,70 @@
+# Ingress para acceso externo a la API
+# k3s viene con Traefik por defecto
+#
+# IMPORTANTE: Reemplaza 'llm-api.local' con tu dominio o IP
+# Para pruebas locales, añade a /etc/hosts:
+#   192.168.X.X  llm-api.local
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: langchain-api-ingress
+  namespace: llm-services
+  labels:
+    app.kubernetes.io/part-of: langchain-ollama
+  annotations:
+    # Traefik annotations
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    # Aumentar timeout para streaming
+    traefik.ingress.kubernetes.io/router.middlewares: llm-services-timeout@kubernetescrd
+    # CORS (si necesitas acceso desde navegadores)
+    # traefik.ingress.kubernetes.io/router.middlewares: llm-services-cors@kubernetescrd
+
+spec:
+  ingressClassName: traefik  # Clase de ingress de k3s
+  rules:
+  - host: llm-api.local  # Cambiar a tu dominio
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: langchain-api
+            port:
+              number: 8000
+
+---
+# Middleware para aumentar timeout (streaming puede tardar)
+# Comentado por incompatibilidad con la versión de Traefik
+# Si necesitas configurar timeouts, hazlo en el IngressRoute de Traefik
+#apiVersion: traefik.containo.us/v1alpha1
+#kind: Middleware
+#metadata:
+#  name: timeout
+#  namespace: llm-services
+#spec:
+#  forwardAuth:
+#    address: http://localhost
+#    trustForwardHeader: true
+
+---
+# Middleware CORS (opcional, descomenta si necesitas)
+#apiVersion: traefik.containo.us/v1alpha1
+#kind: Middleware
+#metadata:
+#  name: cors
+#  namespace: llm-services
+#spec:
+#  headers:
+#    accessControlAllowMethods:
+#      - GET
+#      - POST
+#      - OPTIONS
+#    accessControlAllowOriginList:
+#      - "http://localhost:3000"
+#      - "http://tu-frontend.local"
+#    accessControlAllowHeaders:
+#      - "*"
+#    accessControlMaxAge: 100
+#    addVaryHeader: true

@@ -1,0 +1,67 @@
+---
+# Service para Ollama (solo acceso interno desde la API)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: llm-services
+  labels:
+    app: ollama
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/part-of: langchain-ollama
+spec:
+  type: ClusterIP  # Solo accesible dentro del cluster
+  selector:
+    app: ollama
+  ports:
+  - name: http
+    port: 11434
+    targetPort: 11434
+    protocol: TCP
+  sessionAffinity: None
+
+---
+# Service para LangChain API (acceso desde otros pods/servicios)
+apiVersion: v1
+kind: Service
+metadata:
+  name: langchain-api
+  namespace: llm-services
+  labels:
+    app: langchain-api
+    app.kubernetes.io/name: langchain-api
+    app.kubernetes.io/part-of: langchain-ollama
+spec:
+  type: ClusterIP  # Accesible dentro del cluster
+  selector:
+    app: langchain-api
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  sessionAffinity: ClientIP  # Mantener sesiones en la misma réplica
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 300  # 5 minutos
+
+---
+# Service alternativo con NodePort (opcional, para acceso externo directo)
+apiVersion: v1
+kind: Service
+metadata:
+  name: langchain-api-nodeport
+  namespace: llm-services
+  labels:
+    app: langchain-api
+    app.kubernetes.io/name: langchain-api
+spec:
+  type: NodePort
+  selector:
+    app: langchain-api
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    nodePort: 30800  # Accesible en http://<NODE-IP>:30800
+    protocol: TCP

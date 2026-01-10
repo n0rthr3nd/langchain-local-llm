@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models-pvc
+  namespace: llm-services
+  labels:
+    app: ollama
+    app.kubernetes.io/part-of: langchain-ollama
+spec:
+  accessModes:
+    - ReadWriteOnce  # Solo un pod puede montar este volumen
+  resources:
+    requests:
+      storage: 20Gi  # Espacio para 3-4 modelos LLM
+  storageClassName: local-path  # Clase de almacenamiento por defecto de k3s

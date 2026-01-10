@@ -1,0 +1,89 @@
+# Job para pre-descargar modelos LLM
+# Ejecutar DESPUÉS de que Ollama esté corriendo
+#
+# Uso:
+#   kubectl apply -f model-download-job.yaml
+#   kubectl logs -n llm-services job/model-download -f
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-download
+  namespace: llm-services
+  labels:
+    app.kubernetes.io/part-of: langchain-ollama
+spec:
+  # Número de reintentos si falla
+  backoffLimit: 3
+  # Limpiar job automáticamente después de 24h
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: model-download
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: download-models
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "======================================"
+          echo "Descargando modelos LLM para Ollama"
+          echo "======================================"
+          echo ""
+
+          OLLAMA_URL="http://ollama.llm-services.svc.cluster.local:11434"
+
+          # Esperar a que Ollama esté listo
+          echo "Esperando a que Ollama esté disponible..."
+          until curl -sf "$OLLAMA_URL/api/tags" > /dev/null; do
+            echo "  Ollama no responde todavía, reintentando en 5s..."
+            sleep 5
+          done
+          echo "✓ Ollama está disponible"
+          echo ""
+
+          # Función para descargar modelo
+          download_model() {
+            MODEL=$1
+            echo "Descargando modelo: $MODEL"
+            curl -X POST "$OLLAMA_URL/api/pull" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\": \"$MODEL\"}" \
+              --max-time 1800 || {
+                echo "✗ Error descargando $MODEL"
+                return 1
+              }
+            echo "✓ Modelo $MODEL descargado"
+            echo ""
+          }
+
+          # Descargar modelos
+          download_model "gemma2:2b"
+          download_model "nomic-embed-text"
+
+          # Opcional: descarga modelos adicionales (comentados por defecto)
+          # download_model "phi3:mini"
+          # download_model "llama3.2:3b"
+
+          echo "======================================"
+          echo "✓ Todos los modelos descargados!"
+          echo "======================================"
+
+          # Listar modelos instalados
+          echo ""
+          echo "Modelos disponibles:"
+          curl -s "$OLLAMA_URL/api/tags" | grep -o '"name":"[^"]*"' || echo "No se pudo listar"
+
+          exit 0
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+          requests:
+            memory: "64Mi"
+            cpu: "50m"

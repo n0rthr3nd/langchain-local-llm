@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-services
+  labels:
+    name: llm-services
+    app.kubernetes.io/part-of: langchain-ollama

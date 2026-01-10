@@ -1,0 +1,43 @@
+# Kustomization para LangChain + Ollama
+# Uso: kubectl apply -k k8s/base/
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: llm-services
+
+# Recursos en orden de dependencia
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - pvc.yaml
+  - ollama-statefulset.yaml
+  - services.yaml
+  - langchain-api-deployment.yaml
+  - networkpolicy.yaml
+  - ingress.yaml
+  - hpa.yaml
+
+# Labels comunes
+commonLabels:
+  app.kubernetes.io/part-of: langchain-ollama
+  app.kubernetes.io/managed-by: kustomize
+
+# Annotations comunes
+commonAnnotations:
+  description: "LangChain + Ollama LLM local en Kubernetes"
+  documentation: "https://github.com/tu-repo/langchain-local-llm"
+
+# Configuración de imágenes
+images:
+  - name: langchain-app
+    newTag: latest
+  - name: ollama/ollama
+    newTag: latest
+
+# ConfigMapGenerator (alternativa a configmap.yaml)
+# configMapGenerator:
+#   - name: langchain-config
+#     literals:
+#       - MODEL_NAME=gemma2:2b
+#       - OLLAMA_BASE_URL=http://ollama:11434
