@@ -130,6 +130,30 @@ Respuesta:"""
         
         return chain.invoke(question)
 
+    def ask_stream(self, question: str):
+        """Asks a question using the RAG chain and streams the response."""
+        template = """Responde la pregunta basandote SOLO en el siguiente contexto:
+{context}
+
+Pregunta: {question}
+
+Si no encuentras la respuesta en el contexto, di "No tengo informacion suficiente en mi base de conocimiento para responder eso."
+Respuesta:"""
+        
+        prompt = ChatPromptTemplate.from_template(template)
+
+        def format_docs(docs):
+            return "\n\n".join(doc.page_content for doc in docs)
+
+        chain = (
+            {"context": self.retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | self.llm
+            | StrOutputParser()
+        )
+        
+        return chain.stream(question)
+
     def get_related_docs(self, query: str, k: int = 3) -> List[Document]:
         """Returns documents similar to the query."""
         return self.vectorstore.similarity_search(query, k=k)

@@ -172,35 +172,49 @@ async def chat_stream(request: ChatRequest):
 
     async def generate():
         try:
-            llm = ChatOllama(
-                model=request.model,
-                base_url=OLLAMA_BASE_URL,
-                temperature=request.temperature,
-                num_predict=request.max_tokens,
-            )
+        try:
+            if request.use_knowledge_base:
+                # RAG Flow
+                last_message = request.messages[-1]
+                if last_message.role != "user":
+                    yield "Error: Last message must be from user for RAG."
+                    return
 
-            # Construir mensajes usando objetos Message directamente
-            # para evitar problemas con caracteres especiales en plantillas
-            from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+                # Streaming de RAG
+                for chunk in rag_service.ask_stream(last_message.content):
+                    yield chunk
+            
+            else:
+                # Standard Flow
+                llm = ChatOllama(
+                    model=request.model,
+                    base_url=OLLAMA_BASE_URL,
+                    temperature=request.temperature,
+                    num_predict=request.max_tokens,
+                )
 
-            langchain_messages = []
+                # Construir mensajes usando objetos Message directamente
+                # para evitar problemas con caracteres especiales en plantillas
+                from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
-            has_system = any(msg.role == "system" for msg in request.messages)
-            if not has_system and request.system_prompt:
-                langchain_messages.append(SystemMessage(content=request.system_prompt))
+                langchain_messages = []
 
-            for msg in request.messages:
-                if msg.role == "user":
-                    langchain_messages.append(HumanMessage(content=msg.content))
-                elif msg.role == "assistant":
-                    langchain_messages.append(AIMessage(content=msg.content))
-                elif msg.role == "system":
-                    langchain_messages.append(SystemMessage(content=msg.content))
+                has_system = any(msg.role == "system" for msg in request.messages)
+                if not has_system and request.system_prompt:
+                    langchain_messages.append(SystemMessage(content=request.system_prompt))
 
-            # Stream de chunks directamente sin plantillas
-            for chunk in llm.stream(langchain_messages):
-                if hasattr(chunk, 'content'):
-                    yield chunk.content
+                for msg in request.messages:
+                    if msg.role == "user":
+                        langchain_messages.append(HumanMessage(content=msg.content))
+                    elif msg.role == "assistant":
+                        langchain_messages.append(AIMessage(content=msg.content))
+                    elif msg.role == "system":
+                        langchain_messages.append(SystemMessage(content=msg.content))
+
+                # Stream de chunks directamente sin plantillas
+                for chunk in llm.stream(langchain_messages):
+                    if hasattr(chunk, 'content'):
+                        yield chunk.content
                 await asyncio.sleep(0)  # Permitir que otros procesos se ejecuten
 
         except Exception as e:
