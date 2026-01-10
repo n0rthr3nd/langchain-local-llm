@@ -23,52 +23,46 @@ Guía completa para desplegar LangChain + Ollama en tu cluster k3s de Raspberry 
 ### Componentes Desplegados
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│  Namespace: llm-services                                      │
-│                                                               │
-│  ┌─────────────────┐         ┌────────────────────────┐      │
-│  │  Ollama         │◄────────│  LangChain API         │      │
-│  │  StatefulSet    │         │  Deployment (2 reps)   │      │
-│  │  - 1 réplica    │         │  - Balanceo de carga   │      │
-│  │  - 5GB RAM      │         │  - Auto-scaling        │      │
-│  │  - Port: 11434  │         │  - Port: 8000          │      │
-│  └────────┬────────┘         └───────────┬────────────┘      │
-│           │                              │                   │
-│    ┌──────▼──────┐              ┌────────▼────────┐          │
-│    │ PVC (20GB)  │              │  Service        │          │
-│    │ Modelos LLM │              │  ClusterIP      │          │
-│    └─────────────┘              └────────┬────────┘          │
-│                                          │                   │
-│                                  ┌───────▼────────┐          │
-│                                  │  Ingress       │          │
-│                                  │  (Traefik)     │          │
-│                                  └────────────────┘          │
-└───────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│  Namespace: llm-services                                               │
+│                                                                        │
+│  ┌─────────────────┐       ┌──────────────────────┐     ┌──────────────┐
+│  │  Ollama         │◄──────│  LangChain API       │◄────│ Frontend     │
+│  │  StatefulSet    │       │  Deployment (2 reps) │     │ Deployment   │
+│  │  - 1 réplica    │       │  - Port: 8000        │     │ - Port: 80   │
+│  └────────┬────────┘       └──────────┬───────────┘     └───────┬──────┘
+│           │                           │                         │      │
+│    ┌──────▼──────┐           ┌────────▼────────┐        ┌───────▼──────┐
+│    │ PVC (20GB)  │           │  Service (API)  │        │ Service (Web)│
+│    │ Modelos LLM │           │  ClusterIP      │        │ ClusterIP    │
+│    └─────────────┘           └────────┬────────┘        └───────┬──────┘
+│                                       │                         │      
+│                               ┌───────▼─────────────────────────▼──────┐
+│                               │  Ingress (Traefik)                     │
+│                               │  https://northr3nd.duckdns.org/ia/chat │
+│                               └────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Flujo de Peticiones
 
 ```
-Usuario/Servicio
+Usuario (Browser)
       │
       ▼
-   Ingress (llm-api.local)
+   Ingress (northr3nd.duckdns.org)
       │
-      ▼
-Service: langchain-api (load balancer)
-      │
-      ├──► Pod API 1 ──┐
-      │                 │
-      └──► Pod API 2 ──┤
-                        │
-                        ▼
-              Service: ollama
-                        │
-                        ▼
-                   Ollama Pod
-                        │
-                        ▼
-                  PVC (modelos)
+      ├── /ia/chat ──► Service: langchain-frontend (Nginx)
+      │                     │
+      │                     ├── /index.html (Static)
+      │                     │
+      │                     └── /ia/chat/api/ ──► Service: langchain-api
+      │                                                 │
+      │                                                 ▼
+      │                                          Pod API (FastAPI)
+      │                                                 │
+      │                                                 ▼
+      └──► (Direct API access optional)          Service: ollama
 ```
 
 ---
@@ -88,18 +82,6 @@ kubectl version --short
 
 # Verificar nodos
 kubectl get nodes
-
-# Verificar espacio en disco
-df -h
-
-# Verificar RAM disponible
-free -h
-```
-
-### Docker (para construir imágenes)
-
-```bash
-docker --version
 ```
 
 ---
@@ -109,9 +91,11 @@ docker --version
 ### Opción 1: Despliegue Automático (Recomendado)
 
 ```bash
-# 1. Construir y cargar imagen en k3s
+# 1. Construir y cargar imágenes en k3s
 cd k8s/scripts
 ./build-and-push.sh
+# Nota: Asegúrate de construir también la imagen del frontend si no está incluida en el script
+# (Ver "Construir Frontend" abajo)
 
 # 2. Desplegar todos los componentes
 ./deploy.sh
@@ -119,19 +103,23 @@ cd k8s/scripts
 # 3. Descargar modelos LLM
 kubectl apply -f ../base/model-download-job.yaml
 kubectl logs -n llm-services job/model-download -f
+```
 
-# 4. Verificar estado
-kubectl get pods -n llm-services
-kubectl get svc -n llm-services
+### Construir Imagen del Frontend (Manual)
+
+Si el script `build-and-push.sh` no incluye el frontend, constrúyelo manualmente:
+
+```bash
+# Desde la raíz del proyecto
+docker build --platform linux/arm64 -t langchain-frontend:latest -f frontend/Dockerfile frontend/
+docker save langchain-frontend:latest | sudo k3s ctr images import -
 ```
 
 ### Opción 2: Despliegue Manual
 
 ```bash
-# 1. Construir imagen
-cd /home/ecanals/ws/langchain-local-llm
-docker build --platform linux/arm64 -t langchain-app:latest .
-docker save langchain-app:latest | sudo k3s ctr images import -
+# 1. Construir imágenes (Backend y Frontend)
+# ... ver arriba ...
 
 # 2. Aplicar manifiestos en orden
 kubectl apply -f k8s/base/namespace.yaml
@@ -143,152 +131,45 @@ kubectl apply -f k8s/base/services.yaml
 # Esperar a que Ollama esté ready
 kubectl wait --for=condition=ready pod -l app=ollama -n llm-services --timeout=300s
 
-# 3. Desplegar API
+# 3. Desplegar API y Frontend
 kubectl apply -f k8s/base/langchain-api-deployment.yaml
+kubectl apply -f k8s/base/frontend-deployment.yaml
+kubectl apply -f k8s/base/frontend-service.yaml
 
 # 4. Aplicar seguridad y networking
 kubectl apply -f k8s/base/networkpolicy.yaml
 kubectl apply -f k8s/base/ingress.yaml
 kubectl apply -f k8s/base/hpa.yaml
-
-# 5. Descargar modelos
-kubectl apply -f k8s/base/model-download-job.yaml
 ```
 
 ---
 
 ## ⚙️ Configuración Detallada
 
-### Modificar Variables de Entorno
+### Ingress y Dominio
 
-Edita `k8s/base/configmap.yaml`:
+El Ingress está configurado para `northr3nd.duckdns.org`.
+El frontend es accesible en: `https://northr3nd.duckdns.org/ia/chat`
 
-```yaml
-data:
-  MODEL_NAME: "phi3:mini"  # Cambiar modelo por defecto
-  MAX_INPUT_LENGTH: "20000"  # Aumentar límite de entrada
-  OLLAMA_MAX_LOADED_MODELS: "2"  # Permitir 2 modelos en memoria
-```
-
-Aplicar cambios:
-
-```bash
-kubectl apply -f k8s/base/configmap.yaml
-kubectl rollout restart deployment/langchain-api -n llm-services
-kubectl rollout restart statefulset/ollama -n llm-services
-```
-
-### Ajustar Recursos (RAM/CPU)
-
-Edita `k8s/base/ollama-statefulset.yaml`:
-
-```yaml
-resources:
-  limits:
-    memory: "6Gi"  # Aumentar si tienes más RAM
-    cpu: "4000m"   # Aumentar si tienes más cores
-  requests:
-    memory: "4Gi"
-    cpu: "2000m"
-```
-
-Aplicar:
-
-```bash
-kubectl apply -f k8s/base/ollama-statefulset.yaml
-```
-
-### Cambiar Número de Réplicas de la API
-
-```bash
-# Método 1: kubectl scale
-kubectl scale deployment/langchain-api --replicas=3 -n llm-services
-
-# Método 2: editar el deployment
-kubectl edit deployment/langchain-api -n llm-services
-# Cambiar spec.replicas: 3
-
-# Método 3: modificar el archivo YAML
-# Editar k8s/base/langchain-api-deployment.yaml
-# spec.replicas: 3
-kubectl apply -f k8s/base/langchain-api-deployment.yaml
-```
-
-### Configurar Ingress con Dominio Personalizado
-
-Edita `k8s/base/ingress.yaml`:
-
-```yaml
-spec:
-  rules:
-  - host: llm.tu-dominio.com  # Cambiar aquí
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: langchain-api
-            port:
-              number: 8000
-```
-
-Añadir entrada DNS o en `/etc/hosts`:
-
-```bash
-# En tu máquina local
-sudo nano /etc/hosts
-# Añadir:
-192.168.X.X  llm.tu-dominio.com
-```
+Edita `k8s/base/ingress.yaml` si necesitas cambiar el dominio.
 
 ---
 
 ## 🌐 Acceso a los Servicios
 
-### 1. Acceso Interno (desde otros pods)
+### 1. Acceso Web (Frontend)
+
+Visita: **https://northr3nd.duckdns.org/ia/chat**
+
+El frontend se conecta automáticamente a la API a través del proxy interno configurado en Nginx (`/ia/chat/api/` -> `langchain-api:8000`).
+
+### 2. Acceso Interno (desde otros pods)
 
 ```bash
-# URL del servicio dentro del cluster
+# API
 http://langchain-api.llm-services.svc.cluster.local:8000
-
-# Probar desde un pod temporal
-kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  curl http://langchain-api.llm-services.svc.cluster.local:8000/
-
-# Ejemplo de chat
-kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  curl -X POST http://langchain-api.llm-services.svc.cluster.local:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hola"}]}'
-```
-
-### 2. Acceso via Ingress (desde fuera del cluster)
-
-```bash
-# 1. Añadir entrada en /etc/hosts
-echo "192.168.1.100  llm-api.local" | sudo tee -a /etc/hosts
-
-# 2. Probar acceso
-curl http://llm-api.local/
-
-# 3. Endpoint de chat
-curl -X POST http://llm-api.local/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "¿Qué es Kubernetes?"}
-    ]
-  }'
-
-# 4. Streaming
-curl -X POST http://llm-api.local/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "Cuenta hasta 10"}
-    ]
-  }'
+# Frontend
+http://langchain-frontend.llm-services.svc.cluster.local:80
 ```
 
 ### 3. Acceso via NodePort (alternativa)

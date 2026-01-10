@@ -16,8 +16,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: langchain-api
-  minReplicas: 2
-  maxReplicas: 4  # Máximo 4 réplicas (limitado por RAM disponible)
+  minReplicas: 1
+  maxReplicas: 1  # Máximo 4 réplicas (limitado por RAM disponible)
   metrics:
   # Escalar basado en CPU
   - type: Resource

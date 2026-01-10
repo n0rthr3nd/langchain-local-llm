@@ -19,7 +19,9 @@ RUN npm run build
 FROM nginx:alpine
 
 # Copiar archivos compilados desde el builder
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Creamos la estructura de directorios para que coincida con la ruta /ia/chat/
+RUN mkdir -p /usr/share/nginx/html/ia/chat
+COPY --from=builder /app/dist /usr/share/nginx/html/ia/chat
 
 # Copiar configuración personalizada de nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf

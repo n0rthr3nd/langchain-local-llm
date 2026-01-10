@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: langchain-ollama
 spec:
   # 2-3 réplicas para alta disponibilidad y balanceo de carga
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: langchain-api

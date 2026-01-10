@@ -25,7 +25,7 @@ services:
       retries: 3
 
   # Servicio LangChain App (Backend FastAPI)
-  langchain-app:
+  langchain-api:
     build:
       context: .
       dockerfile: Dockerfile
@@ -61,7 +61,7 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      langchain-app:
+      langchain-api:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

@@ -37,54 +37,72 @@ print_info "Directorio del proyecto: $PROJECT_ROOT"
 print_info "Construyendo imagen: $FULL_IMAGE"
 echo ""
 
-# Construir imagen para ARM64
-print_info "1/2 Construyendo imagen Docker para linux/arm64..."
+# Construir imagen para ARM64 (Backend)
+print_info "1/4 Construyendo imagen Backend (linux/arm64)..."
 docker build \
   --platform linux/arm64 \
   -t "$FULL_IMAGE" \
   -f Dockerfile \
   . || {
-  print_error "Error al construir la imagen"
+  print_error "Error al construir la imagen Backend"
   exit 1
 }
-print_success "Imagen construida: $FULL_IMAGE"
+print_success "Imagen Backend construida: $FULL_IMAGE"
 
-# Importar imagen a k3s
-print_info "2/2 Importando imagen a k3s..."
+# Construir imagen Frontend
+FRONTEND_IMAGE="langchain-frontend:latest"
+print_info "2/4 Construyendo imagen Frontend (linux/arm64)..."
+docker build \
+  --platform linux/arm64 \
+  -t "$FRONTEND_IMAGE" \
+  -f frontend/Dockerfile \
+  frontend/ || {
+  print_error "Error al construir la imagen Frontend"
+  exit 1
+}
+print_success "Imagen Frontend construida: $FRONTEND_IMAGE"
 
-# k3s usa containerd, podemos importar la imagen directamente
-if command -v k3s &> /dev/null; then
-  # Método 1: Guardar y cargar en k3s (si k3s está disponible)
-  docker save "$FULL_IMAGE" | sudo k3s ctr images import - || {
-    print_warning "No se pudo importar con k3s ctr, probando método alternativo..."
+# Importar imagenes a k3s
+print_info "3/4 Importando imagenes a k3s..."
 
-    # Método 2: Usar docker save/ctr load
-    TMP_TAR="/tmp/${IMAGE_NAME}.tar"
-    docker save "$FULL_IMAGE" -o "$TMP_TAR"
+# Función para importar
+import_image() {
+  local img=$1
+  if command -v k3s &> /dev/null; then
+    docker save "$img" | sudo k3s ctr images import - || {
+      print_warning "Fallo pipe k3s ctr, usando archivo temporal..."
+      TMP_TAR="/tmp/img_$(date +%s).tar"
+      docker save "$img" -o "$TMP_TAR"
+      sudo ctr -n k8s.io images import "$TMP_TAR"
+      rm "$TMP_TAR"
+    }
+  else
+    TMP_TAR="/tmp/img_$(date +%s).tar"
+    docker save "$img" -o "$TMP_TAR"
     sudo ctr -n k8s.io images import "$TMP_TAR"
     rm "$TMP_TAR"
-  }
-else
-  # Si no tenemos k3s cli, usar ctr directamente
-  TMP_TAR="/tmp/${IMAGE_NAME}.tar"
-  docker save "$FULL_IMAGE" -o "$TMP_TAR"
-  sudo ctr -n k8s.io images import "$TMP_TAR"
-  rm "$TMP_TAR"
-fi
+  fi
+}
 
-print_success "Imagen importada a k3s"
+print_info "Importando $FULL_IMAGE..."
+import_image "$FULL_IMAGE"
+
+print_info "Importando $FRONTEND_IMAGE..."
+import_image "$FRONTEND_IMAGE"
+
+print_success "Imágenes importadas a k3s"
 
 # Verificar
 echo ""
-print_info "Verificando imagen en k3s..."
-sudo ctr -n k8s.io images ls | grep "$IMAGE_NAME" || {
-  print_error "No se pudo verificar la imagen en k3s"
-  exit 1
+print_info "4/4 Verificando imagenes en k3s..."
+sudo ctr -n k8s.io images ls | grep "$IMAGE_NAME"
+sudo ctr -n k8s.io images ls | grep "langchain-frontend" || {
+  print_warning "No se pudieron verificar todas las imágenes (puede ser solo un error de grep si usas namespaces distintos)"
 }
 
 echo ""
 echo "======================================================"
-print_success "Imagen lista para usar en k3s!"
+print_success "¡Imágenes listas para usar en k3s!"
 echo "======================================================"
 echo ""
 print_info "Para desplegar, ejecuta:"

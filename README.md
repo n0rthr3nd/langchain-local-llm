@@ -62,6 +62,8 @@ kubectl logs -n llm-services job/model-download -f
 kubectl get pods -n llm-services
 ```
 
+**Acceso Web:** `https://northr3nd.duckdns.org/ia/chat`
+
 📖 **Guías:**
 - [Quick Start (5 minutos)](K8S_QUICKSTART.md)
 - [Documentación completa](K8S_DEPLOYMENT.md)

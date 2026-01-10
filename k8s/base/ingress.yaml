@@ -1,70 +1,65 @@
-# Ingress para acceso externo a la API
+# Ingress para acceso externo a la API y Frontend
 # k3s viene con Traefik por defecto
-#
-# IMPORTANTE: Reemplaza 'llm-api.local' con tu dominio o IP
-# Para pruebas locales, añade a /etc/hosts:
-#   192.168.X.X  llm-api.local
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: langchain-api-ingress
+  name: langchain-ingress
   namespace: llm-services
   labels:
     app.kubernetes.io/part-of: langchain-ollama
   annotations:
     # Traefik annotations
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     # Aumentar timeout para streaming
-    traefik.ingress.kubernetes.io/router.middlewares: llm-services-timeout@kubernetescrd
-    # CORS (si necesitas acceso desde navegadores)
-    # traefik.ingress.kubernetes.io/router.middlewares: llm-services-cors@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: llm-services-llm-services-timeout@kubernetescrd,llm-services-authelia@kubernetescrd
+    # SSL / Cert Manager
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 
 spec:
   ingressClassName: traefik  # Clase de ingress de k3s
+  tls:
+  - hosts:
+    - northr3nd.duckdns.org
+    secretName: langchain-tls
   rules:
-  - host: llm-api.local  # Cambiar a tu dominio
+  - host: northr3nd.duckdns.org
     http:
       paths:
-      - path: /
+      # Frontend App (incluye proxy a API en /ia/chat/api/)
+      - path: /ia/chat
         pathType: Prefix
         backend:
           service:
-            name: langchain-api
+            name: langchain-frontend
             port:
-              number: 8000
+              number: 80
 
 ---
-# Middleware para aumentar timeout (streaming puede tardar)
-# Comentado por incompatibilidad con la versión de Traefik
-# Si necesitas configurar timeouts, hazlo en el IngressRoute de Traefik
-#apiVersion: traefik.containo.us/v1alpha1
-#kind: Middleware
-#metadata:
-#  name: timeout
-#  namespace: llm-services
-#spec:
-#  forwardAuth:
-#    address: http://localhost
-#    trustForwardHeader: true
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: llm-services-timeout
+  namespace: llm-services
+spec:
+  # Configurar timeouts si es necesario, o un middleware vacio/pass-through si solo es para probar
+  # Pero ya que lo usamos, intentemos configurar algo util o simplemente un headers middleware seguro
+  headers:
+    customRequestHeaders:
+      X-Forwarded-Proto: "https"
 
 ---
-# Middleware CORS (opcional, descomenta si necesitas)
-#apiVersion: traefik.containo.us/v1alpha1
-#kind: Middleware
-#metadata:
-#  name: cors
-#  namespace: llm-services
-#spec:
-#  headers:
-#    accessControlAllowMethods:
-#      - GET
-#      - POST
-#      - OPTIONS
-#    accessControlAllowOriginList:
-#      - "http://localhost:3000"
-#      - "http://tu-frontend.local"
-#    accessControlAllowHeaders:
-#      - "*"
-#    accessControlMaxAge: 100
-#    addVaryHeader: true
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: authelia
+  namespace: llm-services
+spec:
+  forwardAuth:
+    address: http://authelia.authelia.svc.cluster.local/api/verify?rd=https://auth.northr3nd.duckdns.org
+    trustForwardHeader: true
+    authResponseHeaders:
+      - Remote-User
+      - Remote-Groups
+      - Remote-Name
+      - Remote-Email

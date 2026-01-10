@@ -27,7 +27,7 @@ export const MessageItem = ({ message }: MessageItemProps) => {
               rehypePlugins={[rehypeHighlight]}
               components={{
                 code(props) {
-                  const { children, className, ...rest } = props;
+                  const { children, className } = props;
                   const inline = !className;
 
                   return (

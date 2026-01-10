@@ -98,6 +98,12 @@ kubectl wait --for=condition=ready pod -l app=langchain-api \
 }
 print_success "LangChain API está ready"
 
+# 6.5. Frontend Deployment
+print_info "6.5 Desplegando Frontend..."
+kubectl apply -f frontend-deployment.yaml
+kubectl apply -f frontend-service.yaml
+print_success "Frontend resources creados"
+
 # 7. NetworkPolicy
 print_info "7/9 Aplicando NetworkPolicies..."
 kubectl apply -f networkpolicy.yaml
@@ -150,13 +156,13 @@ echo "   kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
 echo "     curl http://langchain-api.llm-services.svc.cluster.local:8000/"
 echo ""
 echo "3. Acceso desde fuera (Ingress):"
-echo "   # Añadir a /etc/hosts:"
-echo "   <IP-DEL-NODO>  llm-api.local"
-echo "   curl http://llm-api.local/"
+echo "   # Configurado para: https://northr3nd.duckdns.org/ia/chat"
+echo "   # API directa (via frontend proxy): https://northr3nd.duckdns.org/ia/chat/api/"
 echo ""
 echo "4. Ver logs:"
 echo "   kubectl logs -n llm-services -l app=ollama -f"
 echo "   kubectl logs -n llm-services -l app=langchain-api -f"
+echo "   kubectl logs -n llm-services -l app=langchain-frontend -f"
 echo ""
 echo "5. Monitorear recursos:"
 echo "   kubectl top pods -n llm-services"
