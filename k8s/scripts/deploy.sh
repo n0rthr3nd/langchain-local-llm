@@ -109,6 +109,12 @@ kubectl apply -f frontend-deployment.yaml
 kubectl apply -f frontend-service.yaml
 print_success "Frontend resources creados"
 
+# Reiniciar despliegues para tomar nuevas imágenes
+print_info "Reiniciando despliegues para actualizar imágenes..."
+kubectl rollout restart deployment/langchain-api -n llm-services
+kubectl rollout restart deployment/langchain-frontend -n llm-services
+print_success "Rollout restart solicitado"
+
 # 7. NetworkPolicy
 print_info "7/9 Aplicando NetworkPolicies..."
 kubectl apply -f networkpolicy.yaml

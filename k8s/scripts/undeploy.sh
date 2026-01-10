@@ -45,6 +45,12 @@ print_success "Ingress eliminado"
 kubectl delete -f "$K8S_BASE/networkpolicy.yaml" 2>/dev/null || true
 print_success "NetworkPolicies eliminadas"
 
+kubectl delete -f "$K8S_BASE/frontend-deployment.yaml" 2>/dev/null || true
+print_success "Frontend Deployment eliminado"
+
+kubectl delete -f "$K8S_BASE/frontend-service.yaml" 2>/dev/null || true
+print_success "Frontend Service eliminado"
+
 kubectl delete -f "$K8S_BASE/langchain-api-deployment.yaml" 2>/dev/null || true
 print_success "LangChain API eliminado"
 

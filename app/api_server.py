@@ -1,15 +1,45 @@
+import os
 import shutil
+import asyncio
+from typing import List, Optional
+from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
+from langchain_ollama import ChatOllama
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from rag_service import RAGService
 
-# ... imports ...
+# Load environment variables
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+MODEL_NAME = os.getenv("MODEL_NAME", "llama3.2")
+PORT = int(os.getenv("PORT", 8000))
+MAX_INPUT_LENGTH = int(os.getenv("MAX_INPUT_LENGTH", 4096))
 
-# Configuracion
-# ... existing config ...
+# Initialize FastAPI
+app = FastAPI(title="LangChain Local LLM API")
+
+# Models
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatResponse(BaseModel):
+    response: str
+    model: str
+
+class AnalysisRequest(BaseModel):
+    text: str
+    task: str
+    model: str = MODEL_NAME
+
+# Configuration
 UPLOAD_DIR = "./uploaded_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# ... (API initialization) ...
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "LangChain Local API"}
 
 # Inicializar RAG Service
 rag_service = RAGService(
@@ -29,6 +59,26 @@ class ChatRequest(BaseModel):
 
 
 # ... (Existing endpoints) ...
+
+@app.get("/models")
+async def get_models():
+    """Obtener lista de modelos disponibles en Ollama."""
+    try:
+        # Usamos httpx para consultar directamente a Ollama
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            if response.status_code == 200:
+                data = response.json()
+                # Extraer solo los nombres de los modelos
+                models = [model["name"] for model in data.get("models", [])]
+                return {"models": models}
+            else:
+                raise HTTPException(status_code=response.status_code, detail="Error fetching models from Ollama")
+    except Exception as e:
+         # Fallback si falla la conexión
+        print(f"Error fetching models: {e}")
+        return {"models": [MODEL_NAME]}
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
