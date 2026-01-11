@@ -120,8 +120,10 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen bg-chat-bg">
-      {showSidebar && (
+    <div className="flex h-screen bg-gemini-bg text-gemini-text-primary overflow-hidden">
+      {/* Sidebar - Conditional Render */}
+
+      <div className={`${showSidebar ? 'w-[280px]' : 'w-0'} transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 relative`}>
         <ConversationList
           conversations={conversations}
           currentConversationId={currentConversationId}
@@ -131,15 +133,17 @@ function App() {
           onDeleteConversation={handleDeleteConversation}
           onViewChange={setCurrentView}
         />
-      )}
+      </div>
 
-      <div className="flex-1 relative">
+      <div className="flex-1 flex flex-col relative w-full h-full max-w-full">
+        {/* Toggle Button - Floating top left if sidebar closed, or inside layout */}
         <button
           onClick={() => setShowSidebar(!showSidebar)}
-          className="absolute top-4 left-4 z-10 p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-colors"
+          className={`absolute top-4 ${showSidebar ? 'left-4 opacity-0 pointer-events-none' : 'left-4 opacity-100'} z-20 
+            p-2 text-gemini-text-secondary hover:text-gemini-text-primary hover:bg-gemini-hover rounded-full transition-all`}
           aria-label="Toggle sidebar"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
@@ -157,11 +161,15 @@ function App() {
             onSettingsChange={setSettings}
           />
         ) : (
-          <KnowledgeBaseView />
+          <div className="flex-1 bg-gemini-bg p-6 overflow-auto">
+            <KnowledgeBaseView />
+          </div>
         )}
       </div>
     </div>
   );
+
+
 }
 
 export default App;

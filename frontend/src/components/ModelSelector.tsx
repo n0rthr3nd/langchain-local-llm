@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ModelInfo, ChatSettings } from '../types';
 import { api } from '../utils/api';
 
@@ -11,32 +11,34 @@ export const ModelSelector = ({ settings, onSettingsChange }: ModelSelectorProps
   const [isOpen, setIsOpen] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [loading, setLoading] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadModels();
+
+    // Click outside handler
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const loadModels = async () => {
     setLoading(true);
     try {
       const modelList = await api.getModels();
-      console.log('DEBUG - ModelSelector received models:', modelList);
-      console.log('DEBUG - Number of models:', modelList.length);
-      console.log('DEBUG - First model:', modelList[0]);
-
-      // Filtrar modelos con nombres vacíos o inválidos
       const validModels = modelList.filter(model => model.name && model.name.trim());
-      console.log('DEBUG - Valid models after filter:', validModels);
-
       if (validModels.length > 0) {
         setModels(validModels);
       } else {
-        console.warn('No valid models found, using fallback');
-        setModels([{ name: 'gemma2:2b' }, { name: 'llama3.2' }, { name: 'mistral' }, { name: 'phi3:mini' }]);
+        setModels([{ name: 'gemma2:2b' }, { name: 'llama3.2' }, { name: 'mistral' }]);
       }
     } catch (error) {
       console.error('Error loading models:', error);
-      setModels([{ name: 'gemma2:2b' }, { name: 'llama3.2' }, { name: 'mistral' }, { name: 'phi3:mini' }]);
+      setModels([{ name: 'gemma2:2b' }, { name: 'llama3.2' }, { name: 'mistral' }]);
     } finally {
       setLoading(false);
     }
@@ -46,114 +48,67 @@ export const ModelSelector = ({ settings, onSettingsChange }: ModelSelectorProps
     onSettingsChange({ ...settings, model });
   };
 
-  const handleTemperatureChange = (temperature: number) => {
-    onSettingsChange({ ...settings, temperature });
-  };
-
-  const handleMaxTokensChange = (max_tokens: number) => {
-    onSettingsChange({ ...settings, max_tokens });
-  };
-
-  const handleSystemPromptChange = (system_prompt: string) => {
-    onSettingsChange({ ...settings, system_prompt });
-  };
-
   return (
-    <div className="relative">
+    <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-colors"
-        aria-label="Open settings"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-gemini-text-secondary hover:text-gemini-text-primary hover:bg-gemini-hover rounded-lg transition-all text-sm font-medium"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <span>{settings.model}</span>
+        <svg className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
-        <span className="text-sm">{settings.model}</span>
       </button>
 
       {isOpen && (
-        <div className="absolute top-full mt-2 right-0 w-80 bg-gray-800 rounded-lg shadow-xl border border-gray-700 p-4 z-50">
-          <h3 className="text-white font-semibold mb-4">Configuración</h3>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-300 mb-2">Modelo</label>
-              <select
-                value={settings.model}
-                onChange={(e) => handleModelChange(e.target.value)}
-                className="w-full bg-gray-700 text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                {loading ? (
-                  <option>Cargando...</option>
-                ) : (
-                  models.map((model) => (
-                    <option key={model.name} value={model.name}>
-                      {model.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-300 mb-2">
-                Temperature: {settings.temperature.toFixed(1)}
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="2"
-                step="0.1"
-                value={settings.temperature}
-                onChange={(e) => handleTemperatureChange(parseFloat(e.target.value))}
-                className="w-full"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-300 mb-2">Max Tokens</label>
-              <input
-                type="number"
-                min="128"
-                max="4096"
-                step="128"
-                value={settings.max_tokens}
-                onChange={(e) => handleMaxTokensChange(parseInt(e.target.value))}
-                className="w-full bg-gray-700 text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-300 mb-2">System Prompt</label>
-              <textarea
-                value={settings.system_prompt}
-                onChange={(e) => handleSystemPromptChange(e.target.value)}
-                className="w-full bg-gray-700 text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
-                rows={3}
-              />
-            </div>
-
-            <div className="flex items-center gap-3 pt-2 border-t border-gray-700">
-              <input
-                type="checkbox"
-                id="use_kb"
-                checked={settings.use_knowledge_base || false}
-                onChange={(e) => onSettingsChange({ ...settings, use_knowledge_base: e.target.checked })}
-                className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500 focus:ring-2"
-              />
-              <label htmlFor="use_kb" className="text-sm text-gray-300">
-                Usar Base de Conocimiento (RAG)
-              </label>
-            </div>
+        <div className="absolute top-full mt-2 left-0 w-64 bg-gemini-surface rounded-xl shadow-2xl border border-gemini-border p-2 z-50 animate-fade-in">
+          <div className="mb-2 px-2 py-1">
+            <span className="text-xs font-semibold text-gemini-text-secondary uppercase">Model Selection</span>
           </div>
 
-          <button
-            onClick={() => setIsOpen(false)}
-            className="mt-4 w-full bg-purple-500 hover:bg-purple-600 text-white rounded py-2 transition-colors"
-          >
-            Cerrar
-          </button>
+          <div className="space-y-1 max-h-60 overflow-y-auto scrollbar-thin">
+            {models.map((model) => (
+              <button
+                key={model.name}
+                onClick={() => {
+                  handleModelChange(model.name);
+                  setIsOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between ${settings.model === model.name
+                  ? 'bg-blue-500/10 text-blue-400'
+                  : 'text-gemini-text-primary hover:bg-gemini-hover'
+                  }`}
+              >
+                {model.name}
+                {settings.model === model.name && (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-2 pt-2 border-t border-gemini-border">
+            <div className="px-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gemini-text-secondary">Temp: {settings.temperature}</span>
+                <input
+                  type="range" min="0" max="1" step="0.1"
+                  value={settings.temperature}
+                  onChange={(e) => onSettingsChange({ ...settings, temperature: parseFloat(e.target.value) })}
+                  className="w-24 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-2 px-2 cursor-pointer hover:bg-gemini-hover rounded p-1"
+              onClick={() => onSettingsChange({ ...settings, use_knowledge_base: !settings.use_knowledge_base })}>
+              <div className={`w-4 h-4 border rounded flex items-center justify-center ${settings.use_knowledge_base ? 'bg-purple-500 border-purple-500' : 'border-gray-500'}`}>
+                {settings.use_knowledge_base && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+              </div>
+              <span className="text-xs text-gemini-text-secondary select-none">Use Knowledge Base</span>
+            </div>
+          </div>
         </div>
       )}
     </div>

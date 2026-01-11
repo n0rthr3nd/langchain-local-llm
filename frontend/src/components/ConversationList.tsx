@@ -1,3 +1,4 @@
+
 import { Conversation } from '../types';
 
 type ViewType = 'chat' | 'knowledge';
@@ -22,76 +23,101 @@ export const ConversationList = ({
   onViewChange,
 }: ConversationListProps) => {
   return (
-    <div className="w-64 bg-gray-900 border-r border-gray-700 flex flex-col">
-      <div className="p-4 border-b border-gray-700 space-y-2">
-        <div className="flex flex-col gap-1 mb-4">
+    <div className="w-[280px] h-full bg-gemini-surface border-r border-gemini-border flex flex-col transition-all duration-300 ease-in-out">
+
+      {/* Header Actions */}
+      <div className="p-4 space-y-3">
+        {/* New Chat Button - Prominent */}
+        <button
+          onClick={onNewConversation}
+          className="w-full flex items-center gap-3 px-4 py-3 bg-gemini-hover hover:bg-opacity-80 text-gemini-text-primary rounded-full transition-all shadow-sm hover:shadow-md group"
+        >
+          <div className="p-1 bg-gemini-text-primary/10 rounded-full">
+            <svg className="w-5 h-5 text-gemini-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </div>
+          <span className="font-medium text-sm">New Chat</span>
+        </button>
+
+        {/* View Switchers */}
+        <div className="flex flex-col gap-1">
           <button
             onClick={() => onViewChange('chat')}
-            className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${currentView === 'chat' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+            className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${currentView === 'chat'
+              ? 'bg-blue-500/10 text-blue-400'
+              : 'text-gemini-text-secondary hover:bg-gemini-hover hover:text-gemini-text-primary'
+              }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
-            Chat
+            <span>Chat</span>
           </button>
+
           <button
             onClick={() => onViewChange('knowledge')}
-            className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${currentView === 'knowledge' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+            className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${currentView === 'knowledge'
+              ? 'bg-purple-500/10 text-purple-400'
+              : 'text-gemini-text-secondary hover:bg-gemini-hover hover:text-gemini-text-primary'
+              }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
-            Knowledge Base (Ingest)
+            <span>Knowledge Base</span>
           </button>
         </div>
-
-        <button
-          onClick={onNewConversation}
-          className="w-full bg-purple-500 hover:bg-purple-600 text-white rounded-lg py-2 px-4 transition-colors flex items-center justify-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Nueva Conversación
-        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      {/* Recent Activity Label */}
+      <div className="px-5 py-2">
+        <span className="text-xs font-semibold text-gemini-text-secondary uppercase tracking-wider">Recent</span>
+      </div>
+
+      {/* Conversation List */}
+      <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1 scrollbar-thin">
         {conversations.map((conv) => (
           <div
             key={conv.id}
-            className={`group relative p-3 mb-2 rounded-lg cursor-pointer transition-colors ${currentConversationId === conv.id
-              ? 'bg-gray-700'
-              : 'hover:bg-gray-800'
-              }`}
             onClick={() => onSelectConversation(conv.id)}
+            className={`group flex items-center justify-between px-3 py-2 rounded-full cursor-pointer transition-all ${currentConversationId === conv.id
+              ? 'bg-blue-500/10 text-blue-400' // Active state
+              : 'text-gemini-text-secondary hover:bg-gemini-hover hover:text-gemini-text-primary'
+              }`}
           >
-            <div className="text-white text-sm truncate pr-8">{conv.title}</div>
-            <div className="text-gray-400 text-xs mt-1">
-              {new Date(conv.updatedAt).toLocaleDateString()}
+            <div className="flex-1 min-w-0 pr-2">
+              <p className="text-sm truncate font-medium">{conv.title}</p>
             </div>
+
+            {/* Delete Action (visible on hover) */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onDeleteConversation(conv.id);
               }}
-              className="absolute right-2 top-3 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
-              aria-label="Delete conversation"
+              className="opacity-0 group-hover:opacity-100 p-1 text-gemini-text-secondary hover:text-red-400 transition-all rounded hover:bg-gemini-hover"
+              title="Delete conversation"
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </button>
           </div>
         ))}
+        {conversations.length === 0 && (
+          <div className="px-4 py-8 text-center text-sm text-gemini-text-secondary opacity-60">
+            No history
+          </div>
+        )}
       </div>
 
-      <div className="p-4 border-t border-gray-700 text-xs text-gray-500 text-center">
-        LangChain Local RPi
-      </div>
-
-      <div className="p-4 border-t border-gray-700 text-xs text-gray-400">
-        <div className="mb-2">Total: {conversations.length} conversaciones</div>
+      {/* Footer */}
+      <div className="p-4 border-t border-gemini-border">
+        <div className="text-xs text-gemini-text-secondary flex justify-between items-center">
+          <span>LangChain Local</span>
+          <span className="bg-gemini-hover px-2 py-1 rounded text-[10px]">{conversations.length} chats</span>
+        </div>
       </div>
     </div>
   );
