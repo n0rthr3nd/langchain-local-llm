@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ChatWindow } from './components/ChatWindow';
 import { ConversationList } from './components/ConversationList';
+import { KnowledgeBaseView } from './components/KnowledgeBaseView';
 import { useChat } from './hooks/useChat';
 import { storage } from './utils/storage';
 import { Conversation, ChatSettings } from './types';
@@ -8,6 +9,7 @@ import { Conversation, ChatSettings } from './types';
 function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<'chat' | 'knowledge'>('chat');
   const [settings, setSettings] = useState<ChatSettings>(() => storage.getSettings());
   const [showSidebar, setShowSidebar] = useState(true);
 
@@ -48,11 +50,11 @@ function App() {
     const updatedConversations = conversations.map((conv) =>
       conv.id === currentConversationId
         ? {
-            ...conv,
-            messages,
-            updatedAt: Date.now(),
-            title: messages[0]?.content.slice(0, 50) || 'Nueva conversación',
-          }
+          ...conv,
+          messages,
+          updatedAt: Date.now(),
+          title: messages[0]?.content.slice(0, 50) || 'Nueva conversación',
+        }
         : conv
     );
 
@@ -123,9 +125,11 @@ function App() {
         <ConversationList
           conversations={conversations}
           currentConversationId={currentConversationId}
+          currentView={currentView}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}
           onDeleteConversation={handleDeleteConversation}
+          onViewChange={setCurrentView}
         />
       )}
 
@@ -140,17 +144,21 @@ function App() {
           </svg>
         </button>
 
-        <ChatWindow
-          messages={messages}
-          isLoading={isLoading}
-          isStreaming={isStreaming}
-          settings={settings}
-          onSendMessage={handleSendMessage}
-          onStopGeneration={stopGeneration}
-          onRegenerateLastMessage={regenerateLastMessage}
-          onClearMessages={clearMessages}
-          onSettingsChange={setSettings}
-        />
+        {currentView === 'chat' ? (
+          <ChatWindow
+            messages={messages}
+            isLoading={isLoading}
+            isStreaming={isStreaming}
+            settings={settings}
+            onSendMessage={handleSendMessage}
+            onStopGeneration={stopGeneration}
+            onRegenerateLastMessage={regenerateLastMessage}
+            onClearMessages={clearMessages}
+            onSettingsChange={setSettings}
+          />
+        ) : (
+          <KnowledgeBaseView />
+        )}
       </div>
     </div>
   );

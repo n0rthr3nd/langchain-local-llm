@@ -1,25 +1,50 @@
-
 import { Conversation } from '../types';
-import { FileUploader } from './FileUploader';
+
+type ViewType = 'chat' | 'knowledge';
 
 interface ConversationListProps {
   conversations: Conversation[];
   currentConversationId: string | null;
+  currentView: ViewType;
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
   onDeleteConversation: (id: string) => void;
+  onViewChange: (view: ViewType) => void;
 }
 
 export const ConversationList = ({
   conversations,
   currentConversationId,
+  currentView,
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
+  onViewChange,
 }: ConversationListProps) => {
   return (
     <div className="w-64 bg-gray-900 border-r border-gray-700 flex flex-col">
-      <div className="p-4 border-b border-gray-700">
+      <div className="p-4 border-b border-gray-700 space-y-2">
+        <div className="flex flex-col gap-1 mb-4">
+          <button
+            onClick={() => onViewChange('chat')}
+            className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${currentView === 'chat' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+            Chat
+          </button>
+          <button
+            onClick={() => onViewChange('knowledge')}
+            className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${currentView === 'knowledge' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            Knowledge Base (Ingest)
+          </button>
+        </div>
+
         <button
           onClick={onNewConversation}
           className="w-full bg-purple-500 hover:bg-purple-600 text-white rounded-lg py-2 px-4 transition-colors flex items-center justify-center gap-2"
@@ -61,8 +86,8 @@ export const ConversationList = ({
         ))}
       </div>
 
-      <div className="p-4 border-t border-gray-700">
-        <FileUploader />
+      <div className="p-4 border-t border-gray-700 text-xs text-gray-500 text-center">
+        LangChain Local RPi
       </div>
 
       <div className="p-4 border-t border-gray-700 text-xs text-gray-400">
