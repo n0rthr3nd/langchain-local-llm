@@ -1,6 +1,8 @@
 # MongoDB MCP Server
 
-Model Context Protocol (MCP) server for MongoDB operations. This server provides tools that allow LLM agents to interact with MongoDB databases.
+Model Context Protocol (MCP) server for MongoDB operations. This server provides tools that allow LLM agents to interact with **your existing MongoDB databases**.
+
+**Nota**: Este servidor MCP se conecta a una base de datos MongoDB externa (tuya). No levanta un servidor MongoDB, sino que proporciona al LLM acceso contextual para consultar y responder preguntas sobre las colecciones y datos que ya tienes en tu MongoDB.
 
 ## Features
 
@@ -39,27 +41,42 @@ pip install -r requirements.txt
 Configure MongoDB connection via environment variables (`.env` file):
 
 ```bash
-# MongoDB Configuration
-MONGODB_URI=mongodb://mongodb:27017
-MONGODB_DATABASE=langchain_db
+# MongoDB Configuration (Conexión a tu base de datos existente)
+#
+# Ejemplos de URIs:
+# - MongoDB local: mongodb://localhost:27017
+# - MongoDB Atlas: mongodb+srv://usuario:password@cluster.mongodb.net
+# - MongoDB con autenticación: mongodb://usuario:password@host:27017/database?authSource=admin
+# - Desde Docker a host: mongodb://host.docker.internal:27017
+#
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DATABASE=tu_base_de_datos
 MONGODB_TIMEOUT=5000
 MONGODB_MAX_POOL_SIZE=10
 ```
 
+**Importante**:
+- Reemplaza `MONGODB_URI` con la URI de conexión a tu MongoDB existente
+- Cambia `MONGODB_DATABASE` al nombre de tu base de datos
+- Si usas MongoDB Atlas, usa la URI tipo `mongodb+srv://` con tus credenciales
+- Si tu MongoDB está en tu máquina local y ejecutas esto desde Docker, usa `host.docker.internal` en lugar de `localhost`
+
 ## Docker Setup
 
-MongoDB is configured in `docker-compose.yml`:
+El servicio MongoDB está **comentado** en `docker-compose.yml` porque este MCP se conecta a tu base de datos externa:
 
 ```bash
-# Start all services including MongoDB
+# Iniciar servicios (sin MongoDB - usarás tu propia base de datos)
 docker-compose up -d
 
-# Check MongoDB is running
-docker-compose ps mongodb
+# Verificar que la aplicación está corriendo
+docker-compose ps
 
-# View MongoDB logs
-docker-compose logs -f mongodb
+# Ver logs de la aplicación
+docker-compose logs -f langchain-api
 ```
+
+**Nota**: Si prefieres levantar un servidor MongoDB local para testing, descomenta el servicio `mongodb` en `docker-compose.yml`.
 
 ## Quick Start
 
@@ -227,7 +244,62 @@ Or test the server directly:
 python mongodb_mcp.py
 ```
 
-## Use Cases
+## Caso de Uso Principal: Consultar Datos Existentes
+
+El objetivo principal de este MCP es **permitir que el LLM consulte y responda preguntas sobre los datos que ya tienes en tu MongoDB**.
+
+### Flujo de trabajo:
+
+1. **Explorar tu base de datos**:
+   ```bash
+   # Ver qué colecciones tienes
+   python /app/mcp_server/query_examples.py
+   ```
+
+2. **Proporcionar contexto al LLM**:
+   ```python
+   from mcp_server.llm_integration_example import MongoDBContextProvider
+
+   provider = MongoDBContextProvider()
+
+   # Obtener contexto estructurado de tu base de datos
+   context = provider.get_database_context()
+
+   # Generar system prompt para el LLM
+   system_prompt = provider.get_system_prompt()
+   ```
+
+3. **El LLM puede responder preguntas como**:
+   - "¿Qué colecciones hay disponibles?"
+   - "¿Cuántos documentos hay en la colección X?"
+   - "Muéstrame ejemplos de documentos"
+   - "¿Qué campos tiene la colección Y?"
+   - "Agrupa los datos por categoría"
+
+4. **El LLM ejecuta las consultas automáticamente**:
+   ```python
+   # El usuario pregunta: "¿Cuántos usuarios activos tengo?"
+   # El LLM ejecuta:
+   result = provider.execute_tool("mongodb_count", {
+       "collection": "usuarios",
+       "filter_json": '{"status": "active"}'
+   })
+   # Y responde: "Tienes 1,234 usuarios activos"
+   ```
+
+### Ejemplos Prácticos
+
+Ver los archivos de ejemplo:
+- **`query_examples.py`**: Explorar tu base de datos
+- **`llm_integration_example.py`**: Integración con LLM
+
+```bash
+# Ejecutar ejemplos
+docker exec -it langchain-app python /app/mcp_server/query_examples.py
+docker exec -it langchain-app python /app/mcp_server/llm_integration_example.py
+```
+
+## Otros Use Cases
 
 ### 1. Chat History Storage
 Store and retrieve conversation history:
@@ -314,49 +386,84 @@ for tool_meta in mcp_server.get_tools_metadata():
 
 ## MongoDB Access
 
-### Via Docker Container
+### Acceder a tu MongoDB existente
+
+Usa tus herramientas habituales para acceder a tu MongoDB:
 
 ```bash
-# Connect to MongoDB shell
-docker exec -it mongodb-server mongosh
+# Conectar con mongosh a tu base de datos
+mongosh "tu_uri_de_conexion"
 
-# Use database
-use langchain_db
+# O si es local
+mongosh mongodb://localhost:27017
 
-# Show collections
+# Ver bases de datos
+show dbs
+
+# Usar tu base de datos
+use tu_base_de_datos
+
+# Ver colecciones
 show collections
 
-# Query documents
-db.users.find()
+# Consultar documentos
+db.tu_coleccion.find().limit(5)
 ```
 
-### Via Python
+### Verificar conexión desde Python
 
-```bash
-# Install MongoDB shell tools
-pip install pymongo
+```python
+from pymongo import MongoClient
+import os
+from dotenv import load_dotenv
 
-# Run Python scripts
-python -c "from pymongo import MongoClient; client = MongoClient('mongodb://localhost:27017'); print(client.list_database_names())"
+load_dotenv()
+
+# Probar conexión con tu MongoDB
+uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+client = MongoClient(uri)
+
+print("Bases de datos disponibles:")
+print(client.list_database_names())
+
+# Probar conexión a tu base de datos específica
+db_name = os.getenv("MONGODB_DATABASE", "langchain_db")
+db = client[db_name]
+print(f"\nColecciones en '{db_name}':")
+print(db.list_collection_names())
+
+client.close()
 ```
 
 ## Troubleshooting
 
 ### Connection Issues
 
-1. Check MongoDB is running:
+1. **Verificar que tu MongoDB está accesible**:
    ```bash
-   docker-compose ps mongodb
+   # Probar desde tu máquina
+   mongosh "tu_uri_de_conexion" --eval "db.adminCommand('ping')"
    ```
 
-2. Check MongoDB logs:
+2. **Si usas MongoDB local y ejecutas desde Docker**:
+   - En `.env`, usa `host.docker.internal` en lugar de `localhost`:
    ```bash
-   docker-compose logs mongodb
+   MONGODB_URI=mongodb://host.docker.internal:27017
    ```
 
-3. Test connection:
+3. **Si usas MongoDB Atlas**:
+   - Verifica que tu IP está en la lista blanca (whitelist)
+   - Usa la URI completa con credenciales: `mongodb+srv://usuario:password@...`
+   - Asegúrate de que el usuario tiene permisos de lectura
+
+4. **Ver logs de la aplicación**:
    ```bash
-   docker exec -it mongodb-server mongosh --eval "db.adminCommand('ping')"
+   docker-compose logs -f langchain-api
+   ```
+
+5. **Probar conexión desde Python**:
+   ```bash
+   docker exec -it langchain-app python /app/mcp_server/mongodb_mcp.py
    ```
 
 ### Environment Variables
