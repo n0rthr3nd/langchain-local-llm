@@ -15,6 +15,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Detectar directorio raíz del proyecto
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Configuración
 REGISTRY="${REGISTRY:-}"  # Dejar vacío para K3S local, o especificar tu registry
 IMAGE_NAME="langchain-app"
@@ -104,8 +108,11 @@ build_backend_image() {
 
     print_info "Imagen: $full_image_name"
     print_info "Plataforma: $PLATFORM"
+    print_info "Build context: $PROJECT_ROOT"
 
-    # Construir imagen
+    # Construir imagen desde el directorio raíz del proyecto
+    cd "$PROJECT_ROOT"
+
     if docker buildx build \
         --platform "$PLATFORM" \
         -t "$full_image_name" \
@@ -132,7 +139,9 @@ build_backend_image() {
 build_frontend_image() {
     print_header "Construyendo Imagen Frontend (Opcional)"
 
-    if [ ! -d "frontend" ]; then
+    local frontend_dir="$PROJECT_ROOT/frontend"
+
+    if [ ! -d "$frontend_dir" ]; then
         print_warning "Directorio frontend no encontrado, saltando..."
         return 0
     fi
@@ -143,8 +152,9 @@ build_frontend_image() {
     fi
 
     print_info "Imagen: $full_image_name"
+    print_info "Build context: $frontend_dir"
 
-    cd frontend
+    cd "$frontend_dir"
     if docker buildx build \
         --platform "$PLATFORM" \
         -t "$full_image_name" \
@@ -155,7 +165,6 @@ build_frontend_image() {
     else
         print_warning "Error construyendo imagen frontend (continuando...)"
     fi
-    cd ..
 }
 
 import_to_k3s() {
@@ -168,19 +177,45 @@ import_to_k3s() {
         return 0
     fi
 
-    # Importar imagen backend
-    print_info "Importando ${IMAGE_NAME}:latest a K3S..."
-    if docker save "${IMAGE_NAME}:latest" | sudo k3s ctr images import -; then
-        print_success "Imagen backend importada a K3S"
+    # Importar imagen backend con tag versionado
+    local backend_full_image="${IMAGE_NAME}:${VERSION_TAG}"
+    if [ -n "$REGISTRY" ]; then
+        backend_full_image="${REGISTRY}/${backend_full_image}"
     else
-        print_warning "No se pudo importar a K3S (puede estar en un nodo remoto)"
+        backend_full_image="${IMAGE_NAME}:${VERSION_TAG}"
     fi
 
-    # Importar imagen frontend (si existe)
-    if docker image inspect "${FRONTEND_IMAGE_NAME}:latest" &> /dev/null; then
+    print_info "Importando ${backend_full_image} a K3S..."
+    if docker save "${backend_full_image}" | sudo k3s ctr images import -; then
+        print_success "Imagen backend ${VERSION_TAG} importada a K3S"
+    else
+        print_warning "No se pudo importar ${backend_full_image} a K3S"
+    fi
+
+    # También importar :latest como backup
+    print_info "Importando ${IMAGE_NAME}:latest a K3S..."
+    if docker save "${IMAGE_NAME}:latest" | sudo k3s ctr images import -; then
+        print_success "Imagen backend :latest importada a K3S"
+    else
+        print_warning "No se pudo importar ${IMAGE_NAME}:latest a K3S"
+    fi
+
+    # Importar imagen frontend con tag versionado (si existe)
+    if docker image inspect "${FRONTEND_IMAGE_NAME}:${VERSION_TAG}" &> /dev/null; then
+        local frontend_full_image="${FRONTEND_IMAGE_NAME}:${VERSION_TAG}"
+        if [ -n "$REGISTRY" ]; then
+            frontend_full_image="${REGISTRY}/${frontend_full_image}"
+        fi
+
+        print_info "Importando ${frontend_full_image} a K3S..."
+        if docker save "${frontend_full_image}" | sudo k3s ctr images import -; then
+            print_success "Imagen frontend ${VERSION_TAG} importada a K3S"
+        fi
+
+        # También importar :latest
         print_info "Importando ${FRONTEND_IMAGE_NAME}:latest a K3S..."
         if docker save "${FRONTEND_IMAGE_NAME}:latest" | sudo k3s ctr images import -; then
-            print_success "Imagen frontend importada a K3S"
+            print_success "Imagen frontend :latest importada a K3S"
         fi
     fi
 }
@@ -188,7 +223,7 @@ import_to_k3s() {
 update_kustomization() {
     print_header "Actualizando Kustomization"
 
-    local kustomization_file="k8s/base/kustomization.yaml"
+    local kustomization_file="$PROJECT_ROOT/k8s/base/kustomization.yaml"
 
     if [ ! -f "$kustomization_file" ]; then
         print_error "Archivo $kustomization_file no encontrado"
@@ -200,8 +235,10 @@ update_kustomization() {
     # Backup
     cp "$kustomization_file" "${kustomization_file}.backup"
 
-    # Actualizar tags usando sed
-    sed -i.tmp "s|newTag: .*|newTag: ${VERSION_TAG}|g" "$kustomization_file"
+    # Actualizar tags solo para langchain-app y langchain-frontend
+    # NO actualizar ollama (usa imagen pública oficial)
+    sed -i.tmp "/name: langchain-app/{n;s|newTag: .*|newTag: ${VERSION_TAG}|;}" "$kustomization_file"
+    sed -i.tmp "/name: langchain-frontend/{n;s|newTag: .*|newTag: ${VERSION_TAG}|;}" "$kustomization_file"
     rm -f "${kustomization_file}.tmp"
 
     print_success "Kustomization actualizado"
@@ -227,8 +264,8 @@ deploy_to_k3s() {
     fi
 
     # Aplicar manifiestos
-    print_info "Aplicando manifiestos..."
-    if kubectl apply -k k8s/base/; then
+    print_info "Aplicando manifiestos desde: $PROJECT_ROOT/k8s/base/"
+    if kubectl apply -k "$PROJECT_ROOT/k8s/base/"; then
         print_success "Manifiestos aplicados"
     else
         print_error "Error aplicando manifiestos"

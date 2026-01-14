@@ -25,15 +25,13 @@ spec:
     - protocol: TCP
       port: 11434
   egress:
-  # Permitir tráfico saliente (necesario para descargar modelos)
-  - to:
-    - namespaceSelector: {}
-    ports:
+  # Permitir tráfico saliente a internet (necesario para descargar modelos)
+  - ports:
     - protocol: TCP
       port: 443  # HTTPS
     - protocol: TCP
       port: 80   # HTTP
-  # DNS
+  # DNS (necesario para resolver nombres externos)
   - to:
     - namespaceSelector:
         matchLabels:
@@ -75,7 +73,7 @@ spec:
     ports:
     - protocol: TCP
       port: 11434
-  # DNS
+  # DNS (necesario para resolver nombres externos)
   - to:
     - namespaceSelector:
         matchLabels:
@@ -83,9 +81,11 @@ spec:
     ports:
     - protocol: UDP
       port: 53
-  # Permitir HTTPS saliente (para actualizar librerías si es necesario)
-  - to:
-    - namespaceSelector: {}
-    ports:
+  # Permitir HTTPS saliente a internet (para APIs externas)
+  - ports:
     - protocol: TCP
       port: 443
+  # Permitir MongoDB Atlas (puerto 27017)
+  - ports:
+    - protocol: TCP
+      port: 27017

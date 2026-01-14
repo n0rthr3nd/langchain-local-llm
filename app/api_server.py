@@ -1,15 +1,25 @@
 import os
 import shutil
 import asyncio
-from typing import List, Optional
+import json
+from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.tools import tool
 from rag_service import RAGService
 import nltk
+
+# Import MongoDB MCP
+try:
+    from mcp_server.mongodb_mcp import create_mongodb_mcp_server
+    MONGODB_MCP_AVAILABLE = True
+except ImportError:
+    MONGODB_MCP_AVAILABLE = False
+    print("WARNING: MongoDB MCP not available")
 
 # Ensure NLTK data is available
 try:
@@ -59,6 +69,100 @@ rag_service = RAGService(
     model_name=MODEL_NAME
 )
 
+# Inicializar MongoDB MCP
+mongodb_server = None
+mongodb_tools = []
+mongodb_context = None
+
+if MONGODB_MCP_AVAILABLE:
+    try:
+        mongodb_server = create_mongodb_mcp_server()
+
+        # Crear LangChain tools a partir de las herramientas MCP
+        @tool
+        def mongodb_find(collection: str, filter_json: str = "{}", limit: int = 10) -> str:
+            """Busca documentos en una colección de MongoDB.
+
+            Args:
+                collection: Nombre de la colección
+                filter_json: Filtro en formato JSON (ej: '{"status": "active"}')
+                limit: Número máximo de documentos a retornar
+
+            Returns:
+                JSON string con los resultados
+            """
+            result = mongodb_server.execute_tool("mongodb_find", {
+                "collection": collection,
+                "filter_json": filter_json,
+                "limit": limit
+            })
+            return result
+
+        @tool
+        def mongodb_count(collection: str, filter_json: str = "{}") -> str:
+            """Cuenta documentos en una colección que cumplan un filtro.
+
+            Args:
+                collection: Nombre de la colección
+                filter_json: Filtro en formato JSON
+
+            Returns:
+                JSON string con el conteo
+            """
+            result = mongodb_server.execute_tool("mongodb_count", {
+                "collection": collection,
+                "filter_json": filter_json
+            })
+            return result
+
+        @tool
+        def mongodb_aggregate(collection: str, pipeline_json: str) -> str:
+            """Ejecuta un pipeline de agregación en MongoDB.
+
+            Args:
+                collection: Nombre de la colección
+                pipeline_json: Pipeline en formato JSON array
+
+            Returns:
+                JSON string con los resultados
+            """
+            result = mongodb_server.execute_tool("mongodb_aggregate", {
+                "collection": collection,
+                "pipeline_json": pipeline_json
+            })
+            return result
+
+        @tool
+        def mongodb_list_collections() -> str:
+            """Lista todas las colecciones disponibles en la base de datos.
+
+            Returns:
+                JSON string con la lista de colecciones
+            """
+            result = mongodb_server.execute_tool("mongodb_list_collections", {})
+            return result
+
+        mongodb_tools = [mongodb_find, mongodb_count, mongodb_aggregate, mongodb_list_collections]
+
+        # Obtener contexto de la base de datos
+        try:
+            result = mongodb_server.execute_tool("mongodb_list_collections", {})
+            result_data = json.loads(result)
+            if result_data.get("success"):
+                mongodb_context = {
+                    "database": result_data.get("database"),
+                    "collections": result_data.get("collections", [])
+                }
+        except Exception as e:
+            print(f"Error getting MongoDB context: {e}")
+
+        print(f"✓ MongoDB MCP initialized with {len(mongodb_tools)} tools")
+        if mongodb_context:
+            print(f"✓ Database: {mongodb_context['database']}, Collections: {len(mongodb_context['collections'])}")
+    except Exception as e:
+        print(f"Error initializing MongoDB MCP: {e}")
+        MONGODB_MCP_AVAILABLE = False
+
 # ... (Models) ...
 
 class ChatRequest(BaseModel):
@@ -68,6 +172,7 @@ class ChatRequest(BaseModel):
     max_tokens: Optional[int] = Field(default=2048, ge=1, le=4096, description="Max tokens")
     system_prompt: Optional[str] = Field(default="Eres un asistente útil.", description="System prompt")
     use_knowledge_base: Optional[bool] = Field(default=False, description="Use RAG context")
+    use_mongodb_tools: Optional[bool] = Field(default=False, description="Enable MongoDB database tools")
 
 
 # ... (Existing endpoints) ...
@@ -138,7 +243,7 @@ async def get_models():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Endpoint de chat con soporte RAG opcional."""
+    """Endpoint de chat con soporte RAG opcional y MongoDB tools."""
     # Validar longitud
     for msg in request.messages:
         if len(msg.content) > MAX_INPUT_LENGTH:
@@ -150,16 +255,16 @@ async def chat(request: ChatRequest):
             last_message = request.messages[-1]
             if last_message.role != "user":
                  raise HTTPException(status_code=400, detail="Last message must be from user for RAG")
-            
+
             response_text = await rag_service.ask(
                 question=last_message.content,
                 model_name=request.model,
                 temperature=request.temperature
             )
             return ChatResponse(response=response_text, model=request.model)
-        
+
         else:
-            # Standard Flow
+            # Standard Flow (con o sin MongoDB tools)
             llm = ChatOllama(
                 model=request.model,
                 base_url=OLLAMA_BASE_URL,
@@ -167,15 +272,40 @@ async def chat(request: ChatRequest):
                 num_predict=request.max_tokens,
             )
 
-            # ... (Existing message construction logic) ...
             from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
             langchain_messages = []
 
+            # Construir system prompt con contexto de MongoDB si está habilitado
+            system_prompt = request.system_prompt
+            if request.use_mongodb_tools and MONGODB_MCP_AVAILABLE and mongodb_context:
+                collections_list = ", ".join(mongodb_context["collections"])
+                mongodb_system_prompt = f"""Tienes acceso a una base de datos MongoDB llamada '{mongodb_context["database"]}' con las siguientes colecciones: {collections_list}.
+
+Puedes usar las siguientes herramientas para consultar los datos:
+- mongodb_list_collections: Lista todas las colecciones disponibles
+- mongodb_find: Busca documentos en una colección
+- mongodb_count: Cuenta documentos que cumplan un filtro
+- mongodb_aggregate: Ejecuta pipelines de agregación complejos
+
+Cuando el usuario haga preguntas sobre los datos:
+1. Usa mongodb_list_collections si necesitas ver qué colecciones hay disponibles
+2. Usa mongodb_find para obtener documentos de una colección
+3. Usa mongodb_count para contar documentos
+4. Interpreta los resultados y responde en lenguaje natural
+
+Ejemplos de uso:
+- Para listar usuarios: mongodb_find(collection="users", filter_json="{{}}", limit=10)
+- Para contar usuarios activos: mongodb_count(collection="users", filter_json='{{"status": "active"}}')
+- Para buscar por nombre: mongodb_find(collection="users", filter_json='{{"name": "Juan"}}', limit=5)
+
+{system_prompt}"""
+                system_prompt = mongodb_system_prompt
+
             # Agregar system prompt si existe y no está en los mensajes
             has_system = any(msg.role == "system" for msg in request.messages)
-            if not has_system and request.system_prompt:
-                langchain_messages.append(SystemMessage(content=request.system_prompt))
+            if not has_system and system_prompt:
+                langchain_messages.append(SystemMessage(content=system_prompt))
 
             # Agregar resto de mensajes
             for msg in request.messages:
@@ -186,8 +316,52 @@ async def chat(request: ChatRequest):
                 elif msg.role == "system":
                     langchain_messages.append(SystemMessage(content=msg.content))
 
-            chain = llm | StrOutputParser()
-            response = await chain.ainvoke(langchain_messages)
+            # Si MongoDB tools están habilitados, vincular las herramientas al LLM
+            if request.use_mongodb_tools and MONGODB_MCP_AVAILABLE and mongodb_tools:
+                llm_with_tools = llm.bind_tools(mongodb_tools)
+
+                # Invocar el LLM con herramientas
+                result = await llm_with_tools.ainvoke(langchain_messages)
+
+                # Procesar tool calls si existen
+                from langchain_core.messages import AIMessage, ToolMessage
+                max_iterations = 5
+                iteration = 0
+
+                while hasattr(result, 'tool_calls') and result.tool_calls and iteration < max_iterations:
+                    iteration += 1
+                    langchain_messages.append(result)
+
+                    # Ejecutar cada tool call
+                    for tool_call in result.tool_calls:
+                        tool_name = tool_call["name"]
+                        tool_args = tool_call["args"]
+
+                        print(f"Executing tool: {tool_name} with args: {tool_args}")
+
+                        # Encontrar y ejecutar la herramienta
+                        tool_result = None
+                        for tool_func in mongodb_tools:
+                            if tool_func.name == tool_name:
+                                tool_result = tool_func.invoke(tool_args)
+                                break
+
+                        if tool_result:
+                            langchain_messages.append(
+                                ToolMessage(
+                                    content=str(tool_result),
+                                    tool_call_id=tool_call["id"]
+                                )
+                            )
+
+                    # Invocar LLM nuevamente con los resultados de las herramientas
+                    result = await llm_with_tools.ainvoke(langchain_messages)
+
+                response = result.content if hasattr(result, 'content') else str(result)
+            else:
+                # Sin herramientas
+                chain = llm | StrOutputParser()
+                response = await chain.ainvoke(langchain_messages)
 
             return ChatResponse(response=response, model=request.model)
 
@@ -343,6 +517,82 @@ async def debug_rag(query: str):
         }
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/mongodb/status")
+async def mongodb_status():
+    """Obtener estado de la conexión MongoDB."""
+    if not MONGODB_MCP_AVAILABLE:
+        return {
+            "available": False,
+            "error": "MongoDB MCP not available"
+        }
+
+    try:
+        return {
+            "available": True,
+            "connected": mongodb_server is not None,
+            "database": mongodb_context.get("database") if mongodb_context else None,
+            "collections": mongodb_context.get("collections") if mongodb_context else [],
+            "tools_count": len(mongodb_tools)
+        }
+    except Exception as e:
+        return {
+            "available": True,
+            "connected": False,
+            "error": str(e)
+        }
+
+@app.get("/mongodb/collections")
+async def mongodb_collections_info():
+    """Obtener información detallada de las colecciones."""
+    if not MONGODB_MCP_AVAILABLE or not mongodb_server:
+        raise HTTPException(status_code=503, detail="MongoDB MCP not available")
+
+    try:
+        result = mongodb_server.execute_tool("mongodb_list_collections", {})
+        result_data = json.loads(result)
+
+        if not result_data.get("success"):
+            raise HTTPException(status_code=500, detail=result_data.get("error"))
+
+        # Obtener muestra de cada colección
+        collections_info = []
+        for coll_name in result_data.get("collections", []):
+            # Contar documentos
+            count_result = mongodb_server.execute_tool("mongodb_count", {
+                "collection": coll_name,
+                "filter_json": "{}"
+            })
+            count_data = json.loads(count_result)
+            doc_count = count_data.get("count", 0) if count_data.get("success") else 0
+
+            # Obtener documento de ejemplo
+            sample_result = mongodb_server.execute_tool("mongodb_find", {
+                "collection": coll_name,
+                "filter_json": "{}",
+                "limit": 1
+            })
+            sample_data = json.loads(sample_result)
+
+            fields = []
+            if sample_data.get("success") and sample_data.get("documents"):
+                doc = sample_data["documents"][0]
+                fields = list(doc.keys())
+
+            collections_info.append({
+                "name": coll_name,
+                "document_count": doc_count,
+                "fields": fields
+            })
+
+        return {
+            "database": result_data.get("database"),
+            "collections": collections_info
+        }
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
 # Main
