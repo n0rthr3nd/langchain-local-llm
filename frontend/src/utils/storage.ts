@@ -20,6 +20,8 @@ export const storage = {
       temperature: 0.7,
       max_tokens: 2048,
       system_prompt: 'Eres un asistente útil.',
+      use_knowledge_base: false,
+      use_mongodb_tools: false,
     };
   },
 

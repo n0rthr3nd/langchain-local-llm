@@ -80,17 +80,29 @@ if MONGODB_MCP_AVAILABLE:
 
         # Crear LangChain tools a partir de las herramientas MCP
         @tool
-        def mongodb_find(collection: str, filter_json: str = "{}", limit: int = 10) -> str:
+        def mongodb_find(collection: str, filter_json: Any = "{}", limit: Any = 10) -> str:
             """Busca documentos en una colección de MongoDB.
 
             Args:
                 collection: Nombre de la colección
-                filter_json: Filtro en formato JSON (ej: '{"status": "active"}')
+                filter_json: Filtro en formato JSON (ej: {"status": "active"})
                 limit: Número máximo de documentos a retornar
 
             Returns:
                 JSON string con los resultados
             """
+            # Convertir filter_json a string si es un dict
+            if isinstance(filter_json, dict):
+                filter_json = json.dumps(filter_json)
+            elif filter_json is None or filter_json == "":
+                filter_json = "{}"
+
+            # Convertir limit a int si es necesario
+            if limit is None:
+                limit = 10
+            elif isinstance(limit, str):
+                limit = int(limit)
+
             result = mongodb_server.execute_tool("mongodb_find", {
                 "collection": collection,
                 "filter_json": filter_json,
@@ -99,7 +111,7 @@ if MONGODB_MCP_AVAILABLE:
             return result
 
         @tool
-        def mongodb_count(collection: str, filter_json: str = "{}") -> str:
+        def mongodb_count(collection: str, filter_json: Any = "{}") -> str:
             """Cuenta documentos en una colección que cumplan un filtro.
 
             Args:
@@ -109,6 +121,12 @@ if MONGODB_MCP_AVAILABLE:
             Returns:
                 JSON string con el conteo
             """
+            # Convertir filter_json a string si es un dict
+            if isinstance(filter_json, dict):
+                filter_json = json.dumps(filter_json)
+            elif filter_json is None or filter_json == "":
+                filter_json = "{}"
+
             result = mongodb_server.execute_tool("mongodb_count", {
                 "collection": collection,
                 "filter_json": filter_json
@@ -431,14 +449,39 @@ async def chat_stream(request: ChatRequest):
                 )
 
                 # Construir mensajes usando objetos Message directamente
-                # para evitar problemas con caracteres especiales en plantillas
                 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
                 langchain_messages = []
 
+                # Construir system prompt con contexto de MongoDB si está habilitado
+                system_prompt = request.system_prompt
+                if request.use_mongodb_tools and MONGODB_MCP_AVAILABLE and mongodb_context:
+                    collections_list = ", ".join(mongodb_context["collections"])
+                    mongodb_system_prompt = f"""Tienes acceso a una base de datos MongoDB llamada '{mongodb_context["database"]}' con las siguientes colecciones: {collections_list}.
+
+Puedes usar las siguientes herramientas para consultar los datos:
+- mongodb_list_collections: Lista todas las colecciones disponibles
+- mongodb_find: Busca documentos en una colección
+- mongodb_count: Cuenta documentos que cumplan un filtro
+- mongodb_aggregate: Ejecuta pipelines de agregación complejos
+
+Cuando el usuario haga preguntas sobre los datos:
+1. Usa mongodb_list_collections si necesitas ver qué colecciones hay disponibles
+2. Usa mongodb_find para obtener documentos de una colección
+3. Usa mongodb_count para contar documentos
+4. Interpreta los resultados y responde en lenguaje natural
+
+Ejemplos de uso:
+- Para listar usuarios: mongodb_find(collection="users", filter_json="{{}}", limit=10)
+- Para contar usuarios activos: mongodb_count(collection="users", filter_json='{{"status": "active"}}')
+- Para buscar por nombre: mongodb_find(collection="users", filter_json='{{"name": "Juan"}}', limit=5)
+
+{system_prompt}"""
+                    system_prompt = mongodb_system_prompt
+
                 has_system = any(msg.role == "system" for msg in request.messages)
-                if not has_system and request.system_prompt:
-                    langchain_messages.append(SystemMessage(content=request.system_prompt))
+                if not has_system and system_prompt:
+                    langchain_messages.append(SystemMessage(content=system_prompt))
 
                 for msg in request.messages:
                     if msg.role == "user":
@@ -448,10 +491,70 @@ async def chat_stream(request: ChatRequest):
                     elif msg.role == "system":
                         langchain_messages.append(SystemMessage(content=msg.content))
 
-                # Stream de chunks directamente sin plantillas
-                async for chunk in llm.astream(langchain_messages):
-                    if hasattr(chunk, 'content'):
-                        yield chunk.content
+                # Si MongoDB tools están habilitados
+                if request.use_mongodb_tools and MONGODB_MCP_AVAILABLE and mongodb_tools:
+                    llm_with_tools = llm.bind_tools(mongodb_tools)
+                    
+                    # Para tools, necesitamos hacer una primera llamada NO streaming para ver si el modelo quiere usar tools
+                    # Esto es una limitación actual de LangChain/Ollama streaming con tools
+                    result = await llm_with_tools.ainvoke(langchain_messages)
+                    
+                    # Procesar tool calls si existen
+                    from langchain_core.messages import AIMessage, ToolMessage
+                    max_iterations = 5
+                    iteration = 0
+                    
+                    while hasattr(result, 'tool_calls') and result.tool_calls and iteration < max_iterations:
+                        iteration += 1
+                        
+                        # Agregar la respuesta del asistente (la llamada a la herramienta)
+                        langchain_messages.append(result)
+                        
+                        # Ejecutar cada tool call
+                        for tool_call in result.tool_calls:
+                            tool_name = tool_call["name"]
+                            tool_args = tool_call["args"]
+                            
+                            # Notificar al usuario que estamos usando una herramienta (opcional)
+                            yield f"[Utilizando herramienta: {tool_name}]...\n"
+                            
+                            # Encontrar y ejecutar la herramienta
+                            tool_result = None
+                            for tool_func in mongodb_tools:
+                                if tool_func.name == tool_name:
+                                    tool_result = tool_func.invoke(tool_args)
+                                    break
+                            
+                            if tool_result:
+                                langchain_messages.append(
+                                    ToolMessage(
+                                        content=str(tool_result),
+                                        tool_call_id=tool_call["id"]
+                                    )
+                                )
+                        
+                        # Invocar LLM nuevamente
+                        # Si es la última iteración o ya no hay tools, podríamos hacer stream aquí
+                        # Por simplicidad, seguimos con invoke hasta que no haya tools, y la respuesta final se streamea
+                        if iteration < max_iterations:
+                             result = await llm_with_tools.ainvoke(langchain_messages)
+                             if not (hasattr(result, 'tool_calls') and result.tool_calls):
+                                 # Si ya no hay tools, streameamos la respuesta final
+                                 async for chunk in llm.astream(langchain_messages):
+                                     if hasattr(chunk, 'content'):
+                                         yield chunk.content
+                                 return # Terminamos
+                    
+                    # Si salimos del loop (max iteraciones) y tenemos un resultado final
+                    if hasattr(result, 'content'):
+                         yield result.content
+
+                else:
+                    # Stream normal sin tools
+                    async for chunk in llm.astream(langchain_messages):
+                        if hasattr(chunk, 'content'):
+                            yield chunk.content
+                
                 await asyncio.sleep(0)  # Permitir que otros procesos se ejecuten
 
         except Exception as e:

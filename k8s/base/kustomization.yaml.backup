@@ -35,9 +35,9 @@ commonAnnotations:
 # Configuración de imágenes
 images:
   - name: langchain-app
-    newTag: v20260114-212403
+    newTag: v20260114-214312
   - name: langchain-frontend
-    newTag: v20260114-212403
+    newTag: v20260114-214312
   # Ollama usa imagen pública oficial, no versionar
   - name: ollama/ollama
     newTag: latest

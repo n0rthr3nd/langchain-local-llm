@@ -36,6 +36,7 @@ export const useChat = (settings: ChatSettings) => {
           max_tokens: settings.max_tokens,
           system_prompt: settings.system_prompt,
           use_knowledge_base: settings.use_knowledge_base,
+          use_mongodb_tools: settings.use_mongodb_tools,
         });
 
         for await (const chunk of stream) {
@@ -58,6 +59,7 @@ export const useChat = (settings: ChatSettings) => {
           max_tokens: settings.max_tokens,
           system_prompt: settings.system_prompt,
           use_knowledge_base: settings.use_knowledge_base,
+          use_mongodb_tools: settings.use_mongodb_tools,
         });
 
         const assistantMessage: Message = {
