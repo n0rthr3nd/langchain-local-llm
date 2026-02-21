@@ -16,6 +16,8 @@ spec:
       labels:
         app: langchain-frontend
     spec:
+      imagePullSecrets:
+        - name: ghcr-auth
       containers:
       - name: frontend
         image: ghcr.io/3kn4ls/langchain-local-llm-frontend:v1.0.0

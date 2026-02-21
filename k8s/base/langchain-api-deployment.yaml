@@ -30,6 +30,8 @@ spec:
         # Forzar restart si el ConfigMap cambia
         checksum/config: "{{ include (print $.Template.BasePath \"/configmap.yaml\") . | sha256sum }}"
     spec:
+      imagePullSecrets:
+        - name: ghcr-auth
       containers:
       - name: langchain-api
         image: ghcr.io/3kn4ls/langchain-local-llm-backend:v1.0.0
