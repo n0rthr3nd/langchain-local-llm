@@ -26,7 +26,7 @@ BACKEND_IMAGE="langchain-backend"
 FRONTEND_DEPLOYMENT="k8s/base/frontend-deployment.yaml"
 BACKEND_DEPLOYMENT="k8s/base/langchain-api-deployment.yaml"
 VERSION_FILE="VERSION"
-REGISTRY_USER="3kn4ls"
+REGISTRY_USER="n0rthr3nd"
 
 # Leer versión actual
 if [ ! -f "$VERSION_FILE" ]; then

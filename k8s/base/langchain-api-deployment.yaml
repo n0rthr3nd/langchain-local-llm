@@ -32,7 +32,7 @@ spec:
     spec:
       containers:
       - name: langchain-api
-        image: ghcr.io/3kn4ls/langchain-local-llm-backend:v1.0.0
+        image: ghcr.io/n0rthr3nd/langchain-backend:v1.0.0
         imagePullPolicy: Always
 
         # Comando para iniciar la API
