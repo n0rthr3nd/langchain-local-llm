@@ -21,20 +21,20 @@ BLUE='\033[0;34m'
 print_success() { echo -e "${BLUE}[SUCCESS]${NC} $1"; }
 
 # Variables
-FRONTEND_IMAGE="langchain-frontend"
-BACKEND_IMAGE="langchain-backend"
+REPO_NAME="langchain-local-llm"
+FRONTEND_IMAGE="${REPO_NAME}-frontend"
+BACKEND_IMAGE="${REPO_NAME}-backend"
 FRONTEND_DEPLOYMENT="k8s/base/frontend-deployment.yaml"
 BACKEND_DEPLOYMENT="k8s/base/langchain-api-deployment.yaml"
 VERSION_FILE="VERSION"
-REGISTRY_USER="n0rthr3nd"
+REGISTRY_USER="3kn4ls"
 
 # Leer versión actual
 if [ ! -f "$VERSION_FILE" ]; then
     echo "1.0.0" > "$VERSION_FILE"
 fi
 
-CURRENT_VERSION=$(cat "$VERSION_FILE" | tr -d '
-')
+CURRENT_VERSION=$(cat "$VERSION_FILE" | tr -d '\n')
 print_info "Versión actual: v$CURRENT_VERSION"
 
 # Función para incrementar versión
@@ -76,7 +76,7 @@ COMMIT_MESSAGE=${2:-"Release"}
 if [[ ! "$VERSION_TYPE" =~ ^(patch|minor|major)$ ]]; then
     print_error "Tipo de versión debe ser: patch, minor o major"
     echo ""
-    echo "Uso: $0 [patch|minor|major] "mensaje del commit""
+    echo "Uso: $0 [patch|minor|major] \"mensaje del commit\""
     exit 1
 fi
 
@@ -130,7 +130,7 @@ print_info "Paso 3/5: Actualizando Backend Deployment..."
 sed -i "s|image: ghcr.io/${REGISTRY_USER}/${BACKEND_IMAGE}:v.*|image: ghcr.io/${REGISTRY_USER}/${BACKEND_IMAGE}:v${NEW_VERSION}|g" "$BACKEND_DEPLOYMENT"
 
 # Verificar cambios
-if grep -q "image: ghcr.io/${REGISTRY_USER}/${FRONTEND_IMAGE}:v${NEW_VERSION}" "$FRONTEND_DEPLOYMENT" && 
+if grep -q "image: ghcr.io/${REGISTRY_USER}/${FRONTEND_IMAGE}:v${NEW_VERSION}" "$FRONTEND_DEPLOYMENT" && \
    grep -q "image: ghcr.io/${REGISTRY_USER}/${BACKEND_IMAGE}:v${NEW_VERSION}" "$BACKEND_DEPLOYMENT"; then
     print_info "✓ Deployments actualizados a v${NEW_VERSION}"
 else
