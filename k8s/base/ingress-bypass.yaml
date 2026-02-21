@@ -1,0 +1,40 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: api-strip-prefix
+  namespace: llm-services
+spec:
+  stripPrefix:
+    prefixes:
+      - /ia/chat/api
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: langchain-ingress-bypass
+  namespace: llm-services
+  annotations:
+    # Traefik annotations
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    # Middleware: Timeout + StripPrefix (SIN Authelia)
+    traefik.ingress.kubernetes.io/router.middlewares: llm-services-llm-services-timeout@kubernetescrd,llm-services-api-strip-prefix@kubernetescrd
+    # SSL / Cert Manager
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - northr3nd.duckdns.org
+    secretName: langchain-tls
+  rules:
+  - host: northr3nd.duckdns.org
+    http:
+      paths:
+      - path: /ia/chat/api/chat/stream
+        pathType: Exact
+        backend:
+          service:
+            name: langchain-api
+            port:
+              number: 8000

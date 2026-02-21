@@ -32,8 +32,8 @@ spec:
     spec:
       containers:
       - name: langchain-api
-        image: langchain-app:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/n0rthr3nd/langchain-backend:v1.0.0
+        imagePullPolicy: Always
 
         # Comando para iniciar la API
         command: ["python", "api_server.py"]

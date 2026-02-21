@@ -20,6 +20,7 @@ resources:
   - frontend-service.yaml
   - networkpolicy.yaml
   - ingress.yaml
+  - ingress-bypass.yaml
   - hpa.yaml
 
 # Labels comunes
@@ -35,9 +36,9 @@ commonAnnotations:
 # Configuración de imágenes
 images:
   - name: langchain-app
-    newTag: v20260115-204004
+    newTag: v20260117-221929
   - name: langchain-frontend
-    newTag: v20260115-204004
+    newTag: v20260117-221929
   # Ollama usa imagen pública oficial, no versionar
   - name: ollama/ollama
     newTag: latest

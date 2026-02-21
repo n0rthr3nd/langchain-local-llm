@@ -18,8 +18,8 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: langchain-frontend:latest
-        imagePullPolicy: Never # Asumimos que la imagen se carga localmente en k3s (como en el script)
+        image: ghcr.io/n0rthr3nd/langchain-frontend:v1.0.0
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         resources:
