@@ -8,6 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  ORG_NAME: n0rthr3nd
 
 jobs:
   test:
@@ -20,14 +21,12 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then 
             python -m pip install -r requirements.txt
           fi
-          
       - name: Run Basic Tests
         run: python test_imports.py || echo "Basic import test failed but continuing..."
 
@@ -56,14 +55,16 @@ jobs:
 
       - name: Lowercase repo name
         run: |
-          echo "REPO_LOWER=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          # Obtenemos solo el nombre del repo sin el owner para evitar duplicados
+          REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f2 | tr '[:upper:]' '[:lower:]')
+          echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_ENV
 
       # --- Build & Push FRONTEND ---
       - name: Extract Frontend Metadata
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.REPO_LOWER }}-frontend
+          images: ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ env.REPO_NAME }}-frontend
           tags: |
             type=sha,format=long
             type=ref,event=branch
@@ -86,7 +87,7 @@ jobs:
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.REPO_LOWER }}-backend
+          images: ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ env.REPO_NAME }}-backend
           tags: |
             type=sha,format=long
             type=ref,event=branch
@@ -114,20 +115,11 @@ jobs:
           ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
         run: |
           if [ -z "$ARGOCD_TOKEN" ] || [ -z "$ARGOCD_SERVER" ]; then
-            echo "Error: ARGOCD_TOKEN o ARGOCD_SERVER no configurados en los Secrets."
+            echo "Error: ARGOCD_TOKEN o ARGOCD_SERVER no configurados."
             exit 1
           fi
-          
           echo "Solicitando sincronización a ArgoCD..."
-          
           APP_NAME="langchain-local-llm"
-          
-          curl -k -X POST \
-            --connect-timeout 10 \
-            --max-time 20 \
-            -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
-            -H "Content-Type: application/json" \
+          curl -k -X POST -H "Authorization: Bearer ${ARGOCD_TOKEN}" -H "Content-Type: application/json" \
             "${ARGOCD_SERVER}/api/v1/applications/${APP_NAME}/sync" \
             -d '{"prune":false,"dryRun":false,"strategy":{"hook":{"force":true}}}' || echo "ArgoCD API no disponible."
-          
-          echo "Paso de despliegue finalizado."
